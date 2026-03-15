@@ -82,6 +82,12 @@
 - Cleaned public README references.
   - removed `HANDOFF.md` links from `README.md` and `README.ko.md`
   - kept handoff as an internal working document instead of a public-facing navigation target
+- Refreshed both public README files around checked-in visualization media.
+  - committed a curated `docs/media/` showcase set for `make_moons`
+  - added clean-path and contradiction-heavy GIFs directly near the top of both README files
+  - added side-by-side sections for stable-vs-stress behavior and static-vs-event-aware visualization
+  - added a checked-in seed gallery so variability across seeds is visible without running the code first
+  - made it explicit that the README visuals are generated artifacts, not mock illustrations
 - Added bilingual project docs and language switching links.
   - created `README.md` and `README.ko.md`
   - created `docs/CONCEPT.en.md` as an English mirror of the main concept doc
@@ -123,6 +129,8 @@
 - Switched package metadata to `README.md` because public package consumers should land on the repository-facing overview, not an internal concept-first document.
 - Recommended dataset-scoped artifact directories in docs so report growth stays manageable as more runs accumulate.
 - Kept public README navigation limited to concept, verification, and change-history docs, while leaving handoff material out of the public entry path.
+- Chose to keep a small checked-in `docs/media/` showcase set so public visitors can understand the project visually before running any commands.
+- Centered the README narrative on contrasts that matter to the algorithm: stable search vs contradiction-heavy search, and static final-state views vs event-aware collapse timelines.
 
 ## Verification
 
@@ -171,6 +179,15 @@
 - `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-frontier-rollbacks 1 --max-attempt-multiplier 12 --show-steps 4 --save-metrics-plot artifacts/plots/make_moons_stress_metrics.png --save-storyboard artifacts/plots/make_moons_stress_storyboard.png --storyboard-panels 5 --save-gif artifacts/animations/make_moons_stress.gif --max-frame-count 5 --gif-frame-duration-ms 420`
   - Result: passed
   - Summary: regenerated stress artifacts with per-weight ban identity overlays, still finishing at `4/32` collapsed weights with `6` rollbacks and `10` forced commits
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --show-steps 2 --save-plot docs/media/make_moons_clean_overview.png --save-storyboard docs/media/make_moons_clean_storyboard.png --storyboard-panels 5 --save-gif docs/media/make_moons_clean.gif --max-frame-count 6 --gif-frame-duration-ms 350`
+  - Result: passed
+  - Summary: generated the checked-in clean-path public showcase assets used at the top of both README files
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-frontier-rollbacks 1 --max-attempt-multiplier 12 --show-steps 4 --save-metrics-plot docs/media/make_moons_stress_metrics.png --save-storyboard docs/media/make_moons_stress_storyboard.png --storyboard-panels 5 --save-gif docs/media/make_moons_stress.gif --max-frame-count 5 --gif-frame-duration-ms 420`
+  - Result: passed
+  - Summary: generated the contradiction-heavy public showcase assets that demonstrate rollback pressure, forced commits, and recovery behavior
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-gallery docs/media/make_moons_seed_gallery.png --gallery-columns 3 --save-seed-artifacts-dir docs/media/make_moons_seed_runs --save-md-report docs/media/make_moons_seed_report.md --report-title "T-WFC make_moons Seed Sweep"`
+  - Result: passed
+  - Summary: generated the checked-in public seed gallery and linked drill-down report used from the README showcase section
 
 ## Next Steps
 

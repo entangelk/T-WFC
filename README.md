@@ -8,6 +8,101 @@
 
 Tensor Wave Function Collapse (`T-WFC`) is a research prototype that tests whether a tiny neural network can be trained without gradient descent by borrowing the `superposition -> observation -> collapse -> propagation` loop from Wave Function Collapse.
 
+<p align="center">
+  <img src="./docs/media/make_moons_clean.gif" alt="T-WFC clean collapse on make_moons" width="900">
+</p>
+<p align="center"><sub>Clean partial collapse on <code>make_moons</code>: 8/32 weights committed, no rollback pressure, decision boundary changes visible step by step.</sub></p>
+
+All media below are real generated artifacts committed under `docs/media/`, not mock illustrations.
+
+## What This README Is Trying To Show
+
+- What a normal collapse path looks like when the search is stable.
+- What a contradiction-heavy path looks like when rollback and forced commits kick in.
+- Why the current visual stack is more informative than a single final-state plot.
+
+## Clean Path vs Pressure Path
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/media/make_moons_clean.gif" alt="Stable clean collapse GIF" width="100%">
+    </td>
+    <td width="50%">
+      <img src="./docs/media/make_moons_stress.gif" alt="Contradiction-heavy recovery GIF" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>Stable path</strong><br>
+      Direct commits dominate. The boundary sharpens without rollback bursts.
+    </td>
+    <td valign="top">
+      <strong>Contradiction-heavy recovery path</strong><br>
+      The same toy setup under harsh tolerance triggers rollback pressure, alt-choice retries, and forced commits.
+    </td>
+  </tr>
+</table>
+
+This is the main story of the project: not just whether a final classifier appears, but how the search behaves while the discrete weight state collapses.
+
+## Static View vs Current View
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/media/make_moons_clean_overview.png" alt="Static final-state overview" width="100%">
+    </td>
+    <td width="50%">
+      <img src="./docs/media/make_moons_clean_storyboard.png" alt="Event-aware storyboard" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>Earlier static view</strong><br>
+      Useful for answering <em>where did the run end?</em> by comparing initial shadow, final shadow, and final hard states.
+    </td>
+    <td valign="top">
+      <strong>Current event-aware view</strong><br>
+      Useful for answering <em>how did it get there?</em> with commit-aligned snapshots, event badges, ban overlays, and search-pressure context.
+    </td>
+  </tr>
+</table>
+
+## Stress Case: Why Recovery Logic Matters
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/media/make_moons_stress_storyboard.png" alt="Stress storyboard with rollback and forced commits" width="100%">
+    </td>
+    <td width="50%">
+      <img src="./docs/media/make_moons_stress_metrics.png" alt="Stress metrics timeline" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>Storyboard</strong><br>
+      Shows where `ROLLBACK`, `ALT`, `FORCED`, ban focus, and frontier pressure appear in the committed history.
+    </td>
+    <td valign="top">
+      <strong>Metrics timeline</strong><br>
+      Shows that the contradiction-heavy path is noisy, but still recovers into a useful hard-state classifier.
+    </td>
+  </tr>
+</table>
+
+Historical note: before the frontier-based forced-commit fallback, this stress setting could terminate at `0/32` committed weights. The current visuals exist partly to make that difference obvious.
+
+## Multi-Seed Behavior
+
+<p align="center">
+  <img src="./docs/media/make_moons_seed_gallery.png" alt="make_moons multi-seed gallery" width="950">
+</p>
+<p align="center"><sub>Seed sweep on <code>make_moons</code>: stable seeds, weaker seeds, and search-pressure summaries can be compared side by side.</sub></p>
+
+The gallery is meant to answer a different question from the GIFs: not “what happened in one run?” but “how much does behavior move when only the seed changes?” Example generated report: [docs/media/make_moons_seed_report.md](./docs/media/make_moons_seed_report.md).
+
 ## Current Status
 
 - `make_moons` and vendored `iris.csv` are both supported.
@@ -34,6 +129,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 t-wfc --dataset make_moons --max-steps 8 --show-steps 6
 t-wfc --dataset make_moons --max-steps 8 --show-steps 2 --save-plot artifacts/make_moons/plots/overview.png --save-progress-plot artifacts/make_moons/plots/progress.png --progress-panels 5 --save-metrics-plot artifacts/make_moons/plots/metrics.png --save-frames-dir artifacts/make_moons/frames/steps --max-frame-count 6
 t-wfc --dataset make_moons --max-steps 8 --show-steps 2 --save-storyboard artifacts/make_moons/plots/storyboard.png --storyboard-panels 5 --save-gif artifacts/make_moons/animations/steps.gif --max-frame-count 6 --gif-frame-duration-ms 350
+t-wfc --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-frontier-rollbacks 1 --max-attempt-multiplier 12 --show-steps 4 --save-metrics-plot artifacts/make_moons/plots/stress_metrics.png --save-storyboard artifacts/make_moons/plots/stress_storyboard.png --storyboard-panels 5 --save-gif artifacts/make_moons/animations/stress.gif --max-frame-count 5 --gif-frame-duration-ms 420
 t-wfc --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-gallery artifacts/make_moons/plots/seed_gallery.png --gallery-columns 3 --save-seed-artifacts-dir artifacts/make_moons/reports/seed_runs --save-md-report artifacts/make_moons/reports/seed_report.md --report-title "T-WFC make_moons Seed Sweep"
 ```
 
@@ -55,6 +151,7 @@ t-wfc --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-g
 - `src/t_wfc/reporting.py`: Markdown seed-sweep report generation with drill-down links
 - `src/t_wfc/visualization.py`: overview, progress, metrics, storyboard, GIF, frame-sequence, and seed-gallery plots
 - `src/t_wfc/cli.py`: command-line entry point
+- `docs/media/`: curated public showcase media used directly in this README
 - `pyproject.toml`: package metadata, dependencies, and the `t-wfc` console script
 
 ## Notes
