@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "t-wfc"
+version = "0.1.0"
+description = "Tensor Wave Function Collapse prototype"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "matplotlib>=3,<4",
+  "numpy>=2,<3",
+  "Pillow>=10,<12",
+]
+
+[project.scripts]
+t-wfc = "t_wfc.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

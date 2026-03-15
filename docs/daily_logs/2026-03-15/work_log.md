@@ -1,0 +1,179 @@
+# Work Log - 2026-03-15
+
+## Goal
+
+- Replace the empty repository state with the first runnable T-WFC prototype and the minimum bilingual project documentation needed to keep work moving.
+
+## Completed Work
+
+- Added a minimal Python package under `src/t_wfc/`.
+- Implemented a zero-dependency `make_moons` dataset generator in `src/t_wfc/data.py`.
+- Vendored `data/iris.csv` from a local sklearn installation and added an Iris loader with stratified splitting.
+- Implemented a toy MLP with flattened parameter layout metadata in `src/t_wfc/model.py`.
+- Added discrete weight-state tracking in `src/t_wfc/state.py`.
+- Implemented the first training loop in `src/t_wfc/trainer.py`:
+  - uniform superposition initialization
+  - loss-based observation
+  - single-weight collapse
+  - explicit neighbor propagation
+  - local alternative-value retry
+  - fixed-depth rollback with temporary value bans when no acceptable collapse remains
+  - frontier-based forced commits to prevent rollback-only oscillation
+  - forced-commit global search with hybrid `shadow/hard/gap` scoring across unresolved weights
+- Expanded result summaries so partial runs report both `shadow_weights` and `hard_weights` metrics.
+- Added a runnable CLI in `src/t_wfc/cli.py`.
+  - dataset selector (`make_moons` / `iris`)
+  - rollback controls (`rollback_depth`, `max_attempt_multiplier`)
+  - frontier rollback cap (`max_frontier_rollbacks`)
+  - hybrid forced-commit weights (`hard_loss_weight`, `hard_gap_weight`)
+- Added `src/t_wfc/visualization.py` and `--save-plot` support in the CLI.
+  - saves a 3-panel PNG for `make_moons` runs: initial shadow, final shadow, final hard
+  - uses a writable matplotlib cache under `/tmp` to avoid local config permission issues
+- Added commit-aligned progress snapshots to `ExperimentResult`.
+- Added `--save-progress-plot` support in the CLI.
+  - saves a timeline PNG using multiple collapse snapshots for both shadow and hard states
+  - supports snapshot downsampling with `--progress-panels`
+- Added richer visualization outputs in `src/t_wfc/visualization.py`.
+  - `save_metrics_plot` writes a dataset-agnostic shadow/hard metrics timeline
+  - `save_snapshot_frames` exports per-snapshot PNG frames for `make_moons` runs
+- Added higher-level visualization outputs for presentation and playback.
+  - `save_storyboard_plot` combines test metrics and selected snapshots into one PNG
+  - `save_snapshot_gif` turns committed snapshots into an animated GIF
+- Added event-aware visualization overlays.
+  - `ExperimentSnapshot` now keeps cumulative rollback, alt-choice, and forced-commit counts
+  - storyboard panels use colored highlights, badges, and per-snapshot counters
+  - GIF and frame exports now include event badges and cumulative search-pressure counters
+- Refined contradiction overlays so event types are separated instead of blended.
+  - snapshots now store delta counts for rollback, alt-choice, and forced-commit events between commits
+  - storyboard and GIF overlays render `ROLLBACK`, `ALT`, and `FORCED` as independent badges
+  - metrics/storyboard markers now show rollback bursts separately from local retry events
+- Added forbidden-ban and frontier-pressure tracking to snapshots.
+  - snapshots now keep active forbidden weight count, active forbidden value count, and frontier pressure
+  - storyboard/GIF counters now show current ban totals and frontier pressure
+  - metrics markers now include ban growth and frontier-pressure events
+- Added multi-seed execution and reporting utilities.
+  - added `src/t_wfc/batch.py` for repeated seed runs
+  - added `save_seed_gallery_plot` in `src/t_wfc/visualization.py`
+  - added `src/t_wfc/reporting.py` for Markdown seed-sweep reports
+  - extended CLI with `--seed-list`, `--save-seed-gallery`, and `--save-md-report`
+- Added per-seed drill-down export for multi-seed runs.
+  - added `export_seed_artifacts` in `src/t_wfc/batch.py`
+  - extended CLI with `--save-seed-artifacts-dir`
+  - Markdown reports now link directly to each seed's metrics, storyboard, and GIF artifacts
+- Added per-weight ban identity overlays across visualization outputs.
+  - snapshots now keep per-weight forbidden entries and short ban-delta labels
+  - storyboard, GIF, frame, and progress views now show which parameter names accumulated bans
+  - metrics plots annotate ban-growth steps with the affected weight identity
+  - seed gallery panels now surface each run's peak banned parameter when bans occurred
+- Strengthened Markdown seed reports.
+  - reports now open with best/worst seed highlight sections
+  - seed tables now tag `BEST` and `WORST` rows directly
+  - reports now include peak-ban focus and latest ban-delta summaries for every seed
+  - seed drill-down sections now prioritize best/worst runs first
+- Hardened `.gitignore` for public publishing.
+  - added local env, editor, OS junk, build, coverage, and log patterns
+  - kept internal working docs (`AGENTS.md`, `CLAUDE.md`, `HANDOFF.md`) out of the public commit path
+  - preserved `artifacts/` and local AI tool state as ignored content
+- Improved public packaging and verification docs.
+  - `pyproject.toml` now points package metadata at `README.md`
+  - added a `t-wfc` console script entry point
+  - added bilingual verification guides in `docs/VERIFICATION.md` and `docs/VERIFICATION.en.md`
+  - updated README quickstarts to use dataset-scoped artifact paths such as `artifacts/make_moons/...`
+- Added bilingual project docs and language switching links.
+  - created `README.md` and `README.ko.md`
+  - created `docs/CONCEPT.en.md` as an English mirror of the main concept doc
+  - linked README and concept docs with badge-style language switches
+- Added smoke tests for both `make_moons` and `iris` in `tests/test_smoke.py`.
+- Added a visualization smoke test that verifies PNG output is actually written.
+- Added a progress-plot smoke test that verifies timeline PNG output is actually written.
+- Added smoke tests for metrics timeline output and snapshot frame export.
+- Added smoke tests for storyboard PNG output and GIF export.
+- Added smoke assertions that snapshot counters stay aligned with final result counters.
+- Added smoke assertions that rollback and forced-commit deltas appear in rollback stress runs.
+- Added smoke coverage for seed-gallery PNG output and Markdown report generation.
+- Created `HANDOFF.md`, `CHANGELOG.md`, and `docs/archive/LOG_GUIDE.md`.
+
+## Technical Decisions
+
+- Used `numpy` only because `sklearn` and `torch` are not installed in the current environment.
+- Vendored the Iris CSV into the repository instead of relying on `sklearn` at runtime.
+- Kept `make_moons` as the fastest bootstrap path, but aligned the codebase with the original Iris target as soon as a stable local data path was available.
+- Kept propagation explicit instead of deferring it entirely to the next observation step, so the WFC-style phase boundary is visible in code.
+- Implemented rollback as a fixed-depth rewind plus temporary bans on previously chosen values. This is closer to the WFC contradiction model than local retry alone, but is still simpler than a full search tree.
+- Added `max_attempt_multiplier` as a safety cap so aggressive rollback settings cannot loop forever.
+- Added frontier-based forced commits so aggressive rollback settings still make forward progress instead of collapsing to `0/N` committed weights.
+- Reworked forced commits to search across all unresolved weights and rank candidates with a hybrid score, which improved the rollback stress case on the default `make_moons` seed.
+- Separated final `shadow_weights` metrics from final `hard_weights` metrics so partial-collapse behavior is visible instead of being hidden behind expected-value evaluation only.
+- Chose `make_moons` as the first visualization target because 2D decision surfaces show collapse outcomes more directly than Iris.
+- Stored snapshots only for committed states so rollback behavior and visualization timeline stay aligned.
+- Kept the main project docs bilingual at the repository level so implementation work can proceed without language-specific drift.
+- Split visualization concerns so 2D datasets get boundary-based outputs while all datasets can still emit a metrics-only plot.
+- Declared `Pillow` explicitly because GIF export now depends on it directly.
+- Kept cumulative search-pressure counters inside snapshots rather than deriving them only at render time so overlays stay stable after rewinds.
+- Added per-snapshot delta counts because cumulative counters alone could not distinguish full rollback bursts from local retry-only commits.
+- Kept multi-seed reporting in Markdown rather than HTML so artifacts stay diff-friendly and repository-native.
+- Reused the existing storyboard/frame/GIF knobs for batch exports so single-run and multi-seed renders stay visually aligned.
+- Kept per-seed batch artifacts minimal: every seed gets a metrics plot, while 2D datasets additionally get storyboard and GIF outputs.
+- Kept ban identity inside snapshots instead of deriving it only in renderers so metrics plots, storyboard panels, and GIF frames can all reference the same stable per-step summaries.
+- Kept Markdown highlights text-first instead of embedding previews by default so reports stay lightweight and readable in plain diff views.
+- Kept `.gitignore` focused on clearly local or generated files so repository source and public-facing docs stay publishable by default.
+- Switched package metadata to `README.md` because public package consumers should land on the repository-facing overview, not an internal concept-first document.
+- Recommended dataset-scoped artifact directories in docs so report growth stays manageable as more runs accumulate.
+
+## Verification
+
+- `python3 -m py_compile src/t_wfc/*.py tests/test_smoke.py`
+  - Result: passed
+- `PYTHONPATH=src python3 -m unittest discover -s tests`
+  - Result: passed (`Ran 13 tests in 31.625s`)
+- `python3 -m venv /tmp/t_wfc_pkg_check --system-site-packages && /tmp/t_wfc_pkg_check/bin/pip install --no-deps --no-build-isolation -e . && /tmp/t_wfc_pkg_check/bin/t-wfc --help`
+  - Result: passed
+  - Summary: verified the installable `t-wfc` console entry point from `pyproject.toml` without fetching packages from the network
+- `PYTHONPATH=src python3 -m t_wfc.cli --show-steps 4`
+  - Result: passed
+  - Summary: 32/32 weights collapsed, train accuracy `0.500 -> 0.844`, test accuracy `0.500 -> 0.933`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --show-steps 3`
+  - Result: passed
+  - Summary: 8/32 weights collapsed, shadow test accuracy `0.500 -> 0.900`, hard test accuracy `0.900`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset iris --max-steps 12 --show-steps 3`
+  - Result: passed
+  - Summary: 12/67 weights collapsed, shadow test accuracy `0.333 -> 0.861`, hard test accuracy `0.667`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-attempt-multiplier 12 --show-steps 2`
+  - Historical note: before forced-commit fallback, this setting could finish at `0/32` collapsed weights due to rollback-only oscillation
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-frontier-rollbacks 1 --max-attempt-multiplier 12 --show-steps 4`
+  - Result: passed
+  - Summary: rollback stress test triggered `6` rollbacks and `10` forced commits, finishing at `4/32` collapsed weights with hard test accuracy `1.000` and hard test loss `0.2268`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --show-steps 2 --save-plot artifacts/plots/make_moons_overview.png`
+  - Result: passed
+  - Summary: saved visualization to `artifacts/plots/make_moons_overview.png`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --show-steps 2 --save-plot artifacts/plots/make_moons_overview.png --save-progress-plot artifacts/plots/make_moons_progress.png --progress-panels 5`
+  - Result: passed
+  - Summary: saved visualization to `artifacts/plots/make_moons_overview.png` and progress timeline to `artifacts/plots/make_moons_progress.png`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --show-steps 2 --save-plot artifacts/plots/make_moons_overview.png --save-progress-plot artifacts/plots/make_moons_progress.png --progress-panels 5 --save-metrics-plot artifacts/plots/make_moons_metrics.png --save-frames-dir artifacts/frames/make_moons_steps --max-frame-count 6`
+  - Result: passed
+  - Summary: saved overview, progress, metrics, and 6 snapshot frames for the same `make_moons` run
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --show-steps 2 --save-storyboard artifacts/plots/make_moons_storyboard.png --storyboard-panels 5 --save-gif artifacts/animations/make_moons_steps.gif --max-frame-count 6 --gif-frame-duration-ms 350`
+  - Result: passed
+  - Summary: saved a storyboard PNG and animated GIF for the same committed-snapshot sequence
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-frontier-rollbacks 1 --max-attempt-multiplier 12 --show-steps 4 --save-metrics-plot artifacts/plots/make_moons_stress_metrics.png --save-storyboard artifacts/plots/make_moons_stress_storyboard.png --storyboard-panels 5 --save-gif artifacts/animations/make_moons_stress.gif --max-frame-count 5 --gif-frame-duration-ms 420`
+  - Result: passed
+  - Summary: stress visualization run triggered `6` rollbacks and `10` forced commits, making the separated `ROLLBACK` / `ALT` / `FORCED` overlays plus ban/frontier counters visible in storyboard and GIF artifacts
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-gallery artifacts/plots/make_moons_seed_gallery.png --gallery-columns 3 --save-md-report artifacts/reports/make_moons_seed_report.md --report-title "T-WFC make_moons Seed Sweep"`
+  - Result: passed
+  - Summary: wrote a multi-seed comparison gallery and a Markdown report covering five `make_moons` runs
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-gallery artifacts/plots/make_moons_seed_gallery.png --gallery-columns 3 --save-seed-artifacts-dir artifacts/reports/make_moons_seed_runs --save-md-report artifacts/reports/make_moons_seed_report.md --report-title "T-WFC make_moons Seed Sweep"`
+  - Result: passed
+  - Summary: wrote a gallery, five per-seed metrics/storyboard/GIF bundles, and a Markdown report with best/worst highlights, peak-ban summaries, and direct drill-down links for each seed
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-frontier-rollbacks 1 --max-attempt-multiplier 12 --show-steps 4 --save-metrics-plot artifacts/plots/make_moons_stress_metrics.png --save-storyboard artifacts/plots/make_moons_stress_storyboard.png --storyboard-panels 5 --save-gif artifacts/animations/make_moons_stress.gif --max-frame-count 5 --gif-frame-duration-ms 420`
+  - Result: passed
+  - Summary: regenerated stress artifacts with per-weight ban identity overlays, still finishing at `4/32` collapsed weights with `6` rollbacks and `10` forced commits
+
+## Next Steps
+
+- Generalize rollback beyond fixed-depth rewind and single-value bans.
+- Tune hybrid score weights so shadow accuracy and hard accuracy stay balanced across more seeds.
+- Consider embedding visual previews for best/worst seeds directly inside the Markdown report, instead of linking only.
+- Add multi-seed comparison summaries for `shadow` vs `hard` divergence so report highlights can explain quality gaps, not only search pressure.
+- Decide whether to add install-focused helpers such as `uv`/`pip` setup snippets or keep the public quickstart minimal.
+- Decide whether final metrics should prioritize `shadow_weights`, `hard_weights`, or a combined criterion.
+- Add richer per-step experiment logs and contradiction markers.

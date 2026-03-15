@@ -1,0 +1,45 @@
+# Python caches and virtualenvs
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Build and coverage outputs
+build/
+dist/
+*.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+
+# Runtime artifacts
+artifacts/
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+.python-version
+
+# Editors and OS noise
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# Internal working docs
+AGENTS.md
+CLAUDE.md
+HANDOFF.md
+
+# AI / local tooling state
+.claude/
+.serena/
