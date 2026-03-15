@@ -33,6 +33,7 @@ def run_seed_batch(
     samples: int = 120,
     noise: float = 0.08,
     hidden_dim: int = 0,
+    hidden_layers: tuple[int, ...] | list[int] | None = None,
     config_template: TWFCConfig,
 ) -> tuple[SeedExperiment, ...]:
     experiments: list[SeedExperiment] = []
@@ -46,12 +47,16 @@ def run_seed_batch(
         )
         input_dim = dataset.x_train.shape[1]
         output_dim = int(max(dataset.y_train.max(), dataset.y_test.max()) + 1)
-        resolved_hidden_dim = hidden_dim or (8 if dataset_name == "iris" else 6)
+        resolved_hidden_layers = _resolve_hidden_layers(
+            dataset_name=dataset_name,
+            hidden_dim=hidden_dim,
+            hidden_layers=hidden_layers,
+        )
         model = ToyMLP(
             MLPConfig(
                 input_dim=input_dim,
-                hidden_dim=resolved_hidden_dim,
                 output_dim=output_dim,
+                hidden_layers=resolved_hidden_layers,
             )
         )
         trainer = TWFCTrainer(
@@ -69,6 +74,23 @@ def run_seed_batch(
         )
 
     return tuple(experiments)
+
+
+def _resolve_hidden_layers(
+    *,
+    dataset_name: str,
+    hidden_dim: int,
+    hidden_layers: tuple[int, ...] | list[int] | None,
+) -> tuple[int, ...]:
+    if hidden_layers:
+        return tuple(int(width) for width in hidden_layers)
+    if hidden_dim > 0:
+        return (hidden_dim,)
+    if dataset_name == "spiral":
+        return (24, 24)
+    if dataset_name == "iris":
+        return (8,)
+    return (6,)
 
 
 def export_seed_artifacts(

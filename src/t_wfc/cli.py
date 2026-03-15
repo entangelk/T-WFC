@@ -3,12 +3,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .batch import export_seed_artifacts, run_seed_batch
+from .baseline import SGDBaselineConfig, train_sgd_classifier
+from .batch import _resolve_hidden_layers, export_seed_artifacts, run_seed_batch
 from .data import load_dataset
 from .model import MLPConfig, ToyMLP
 from .reporting import save_seed_markdown_report
 from .trainer import TWFCConfig, TWFCTrainer
 from .visualization import (
+    save_baseline_comparison_gif,
+    save_baseline_comparison_plot,
+    save_baseline_metrics_comparison_plot,
     save_experiment_plot,
     save_metrics_plot,
     save_progress_plot,
@@ -21,10 +25,12 @@ from .visualization import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the T-WFC toy prototype.")
-    parser.add_argument("--dataset", choices=("make_moons", "iris"), default="make_moons", help="Dataset to run the prototype on.")
-    parser.add_argument("--samples", type=int, default=120, help="Total make_moons sample count.")
-    parser.add_argument("--noise", type=float, default=0.08, help="Gaussian noise applied to the moons dataset.")
-    parser.add_argument("--hidden-dim", type=int, default=0, help="Hidden layer width. Use 0 to select a dataset-specific default.")
+    parser.add_argument("--dataset", choices=("make_moons", "iris", "spiral"), default="make_moons", help="Dataset to run the prototype on.")
+    parser.add_argument("--samples", type=int, default=0, help="Dataset sample count. Use 0 to select a dataset-specific default.")
+    parser.add_argument("--noise", type=float, default=-1.0, help="Dataset noise level. Use a negative value to select a dataset-specific default.")
+    parser.add_argument("--hidden-dim", type=int, default=0, help="Legacy single hidden-layer width. Use 0 to select a dataset-specific default.")
+    parser.add_argument("--hidden-layers", type=str, default="", help="Optional comma-separated hidden layer widths, for example '16,16'.")
+    parser.add_argument("--initial-jitter", type=float, default=-1.0, help="Initial symmetry-breaking prior strength. Use a negative value to select a model-specific default.")
     parser.add_argument("--observation-budget", type=int, default=8, help="How many unresolved weights to observe per step.")
     parser.add_argument("--propagation-budget", type=int, default=6, help="How many neighboring weights to update after each collapse.")
     parser.add_argument("--max-steps", type=int, default=0, help="How many collapse steps to run. Use 0 for a full collapse.")
@@ -37,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-attempt-multiplier", type=int, default=8, help="Safety multiplier that caps total collapse attempts when rollbacks happen.")
     parser.add_argument("--seed", type=int, default=7, help="Random seed for dataset generation and observation sampling.")
     parser.add_argument("--seed-list", type=str, default="", help="Optional comma-separated seed list for multi-seed gallery/report runs.")
+    parser.add_argument("--compare-sgd", action="store_true", help="Train the same MLP with a numpy SGD baseline and print a side-by-side summary.")
+    parser.add_argument("--sgd-epochs", type=int, default=240, help="Epoch count for the SGD baseline.")
+    parser.add_argument("--sgd-learning-rate", type=float, default=0.08, help="Initial learning rate for the SGD baseline.")
+    parser.add_argument("--sgd-learning-rate-decay", type=float, default=0.01, help="Per-epoch learning-rate decay for the SGD baseline.")
+    parser.add_argument("--sgd-batch-size", type=int, default=32, help="Mini-batch size for the SGD baseline. Use -1 for full-batch training.")
+    parser.add_argument("--sgd-weight-scale", type=float, default=1.0, help="Initialization scale for the SGD baseline.")
     parser.add_argument("--show-steps", type=int, default=8, help="How many collapse steps to print in the summary.")
     parser.add_argument("--save-plot", type=Path, default=None, help="Optional PNG output path for a 2D decision-surface plot.")
     parser.add_argument("--save-progress-plot", type=Path, default=None, help="Optional PNG output path for a multi-step progress visualization.")
@@ -48,6 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-frame-count", type=int, default=0, help="How many snapshot frames to export. Use 0 to export every committed snapshot.")
     parser.add_argument("--save-gif", type=Path, default=None, help="Optional GIF output path for an animated snapshot sequence.")
     parser.add_argument("--gif-frame-duration-ms", type=int, default=450, help="Frame duration used for the GIF animation.")
+    parser.add_argument("--save-baseline-metrics-plot", type=Path, default=None, help="Optional PNG output path for a T-WFC-vs-SGD metrics comparison.")
+    parser.add_argument("--save-baseline-comparison-plot", type=Path, default=None, help="Optional PNG output path for a 2D T-WFC-vs-SGD boundary comparison.")
+    parser.add_argument("--save-baseline-comparison-gif", type=Path, default=None, help="Optional GIF output path for a 2D T-WFC-vs-SGD comparison animation.")
     parser.add_argument("--save-seed-gallery", type=Path, default=None, help="Optional PNG output path for a multi-seed comparison gallery.")
     parser.add_argument("--save-seed-artifacts-dir", type=Path, default=None, help="Optional directory for per-seed metrics/storyboard/GIF exports in batch mode.")
     parser.add_argument("--gallery-columns", type=int, default=3, help="How many columns to use for the multi-seed gallery.")
@@ -62,7 +77,16 @@ def main() -> None:
     if len(seed_list) == 1:
         args.seed = seed_list[0]
 
+    parsed_hidden_layers = _parse_hidden_layers(args.hidden_layers)
+    resolved_hidden_layers = _resolve_hidden_layers(
+        dataset_name=args.dataset,
+        hidden_dim=args.hidden_dim,
+        hidden_layers=parsed_hidden_layers,
+    )
+    resolved_initial_jitter = _resolve_initial_jitter(resolved_hidden_layers, args.initial_jitter)
+
     config = TWFCConfig(
+        initial_jitter=resolved_initial_jitter,
         observation_budget=args.observation_budget,
         propagation_budget=args.propagation_budget,
         max_steps=None if args.max_steps == 0 else args.max_steps,
@@ -80,16 +104,17 @@ def main() -> None:
         _run_seed_batch_mode(args, seed_list, config)
         return
 
+    samples = _resolve_dataset_samples(args.dataset, args.samples)
+    noise = _resolve_dataset_noise(args.dataset, args.noise)
     dataset = load_dataset(
         args.dataset,
-        n_samples=args.samples,
-        noise=args.noise,
+        n_samples=samples,
+        noise=noise,
         seed=args.seed,
     )
     input_dim = dataset.x_train.shape[1]
     output_dim = int(max(dataset.y_train.max(), dataset.y_test.max()) + 1)
-    hidden_dim = args.hidden_dim or (8 if args.dataset == "iris" else 6)
-    model = ToyMLP(MLPConfig(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim))
+    model = ToyMLP(MLPConfig(input_dim=input_dim, output_dim=output_dim, hidden_layers=resolved_hidden_layers))
     trainer = TWFCTrainer(
         model=model,
         config=config,
@@ -98,7 +123,7 @@ def main() -> None:
     result = trainer.fit(dataset)
 
     print("T-WFC prototype run")
-    print(f"Dataset/model: {args.dataset}, {input_dim}-{hidden_dim}-{output_dim}")
+    print(f"Dataset/model: {args.dataset}, {model.architecture_label}")
     print(f"Collapsed weights: {result.collapsed_count}/{result.parameter_count}")
     print(f"Local backtracks used: {result.backtrack_count}")
     print(f"Rollbacks used: {result.rollback_count}")
@@ -121,6 +146,51 @@ def main() -> None:
         "Hard train/test loss:  "
         f"{result.final_hard_metrics.train_loss:.4f} / {result.final_hard_metrics.test_loss:.4f}"
     )
+
+    baseline_result = None
+    if args.compare_sgd:
+        baseline_result = train_sgd_classifier(
+            model=model,
+            dataset=dataset,
+            config=SGDBaselineConfig(
+                epochs=args.sgd_epochs,
+                learning_rate=args.sgd_learning_rate,
+                learning_rate_decay=args.sgd_learning_rate_decay,
+                batch_size=args.sgd_batch_size,
+                weight_scale=args.sgd_weight_scale,
+                seed=args.seed,
+            ),
+        )
+        print("")
+        print("SGD baseline")
+        print(
+            "SGD train loss/acc:   "
+            f"{baseline_result.initial_metrics.train_loss:.4f} -> {baseline_result.final_metrics.train_loss:.4f}, "
+            f"{baseline_result.initial_metrics.train_accuracy:.3f} -> {baseline_result.final_metrics.train_accuracy:.3f}"
+        )
+        print(
+            "SGD test loss/acc:    "
+            f"{baseline_result.initial_metrics.test_loss:.4f} -> {baseline_result.final_metrics.test_loss:.4f}, "
+            f"{baseline_result.initial_metrics.test_accuracy:.3f} -> {baseline_result.final_metrics.test_accuracy:.3f}"
+        )
+        print(
+            "Hard-vs-SGD test acc: "
+            f"{result.final_hard_metrics.test_accuracy:.3f} vs {baseline_result.final_metrics.test_accuracy:.3f}"
+        )
+        print(
+            "Hard-vs-SGD test loss:"
+            f" {result.final_hard_metrics.test_loss:.4f} vs {baseline_result.final_metrics.test_loss:.4f}"
+        )
+
+    if any(
+        path is not None
+        for path in (
+            args.save_baseline_metrics_plot,
+            args.save_baseline_comparison_plot,
+            args.save_baseline_comparison_gif,
+        )
+    ) and baseline_result is None:
+        raise ValueError("Baseline comparison outputs require --compare-sgd")
 
     if args.save_plot is not None:
         saved_path = save_experiment_plot(
@@ -185,6 +255,39 @@ def main() -> None:
         )
         print(f"Saved GIF: {saved_gif_path}")
 
+    if args.save_baseline_metrics_plot is not None:
+        saved_baseline_metrics_path = save_baseline_metrics_comparison_plot(
+            result=result,
+            baseline_result=baseline_result,
+            output_path=args.save_baseline_metrics_plot,
+            title=f"T-WFC vs SGD metrics ({args.dataset}, {result.collapsed_count}/{result.parameter_count} collapsed)",
+        )
+        print(f"Saved baseline metrics comparison: {saved_baseline_metrics_path}")
+
+    if args.save_baseline_comparison_plot is not None:
+        saved_baseline_plot_path = save_baseline_comparison_plot(
+            model=model,
+            dataset=dataset,
+            result=result,
+            baseline_result=baseline_result,
+            output_path=args.save_baseline_comparison_plot,
+            title=f"T-WFC vs SGD boundaries ({args.dataset}, {result.collapsed_count}/{result.parameter_count} collapsed)",
+        )
+        print(f"Saved baseline boundary comparison: {saved_baseline_plot_path}")
+
+    if args.save_baseline_comparison_gif is not None:
+        saved_baseline_gif_path = save_baseline_comparison_gif(
+            model=model,
+            dataset=dataset,
+            result=result,
+            baseline_result=baseline_result,
+            output_path=args.save_baseline_comparison_gif,
+            max_frames=args.max_frame_count,
+            frame_duration_ms=args.gif_frame_duration_ms,
+            title_prefix=f"T-WFC vs SGD {args.dataset}",
+        )
+        print(f"Saved baseline comparison GIF: {saved_baseline_gif_path}")
+
     if args.show_steps <= 0:
         return
 
@@ -211,7 +314,39 @@ def _parse_seed_list(raw_value: str) -> tuple[int, ...]:
     return tuple(int(token.strip()) for token in raw_value.split(",") if token.strip())
 
 
+def _parse_hidden_layers(raw_value: str) -> tuple[int, ...]:
+    if not raw_value.strip():
+        return ()
+    return tuple(int(token.strip()) for token in raw_value.split(",") if token.strip())
+
+
+def _resolve_dataset_samples(dataset_name: str, requested_samples: int) -> int:
+    if requested_samples > 0:
+        return requested_samples
+    if dataset_name == "spiral":
+        return 600
+    return 120
+
+
+def _resolve_dataset_noise(dataset_name: str, requested_noise: float) -> float:
+    if requested_noise >= 0.0:
+        return requested_noise
+    if dataset_name == "spiral":
+        return 0.16
+    return 0.08
+
+
+def _resolve_initial_jitter(hidden_layers: tuple[int, ...], requested_jitter: float) -> float:
+    if requested_jitter >= 0.0:
+        return requested_jitter
+    if len(hidden_layers) > 1:
+        return 0.08
+    return 0.0
+
+
 def _run_seed_batch_mode(args, seed_list: tuple[int, ...], config: TWFCConfig) -> None:
+    if args.compare_sgd:
+        raise ValueError("--compare-sgd currently supports only single-run mode")
     incompatible_single_run_flags = (
         args.save_plot,
         args.save_progress_plot,
@@ -219,6 +354,9 @@ def _run_seed_batch_mode(args, seed_list: tuple[int, ...], config: TWFCConfig) -
         args.save_storyboard,
         args.save_frames_dir,
         args.save_gif,
+        args.save_baseline_metrics_plot,
+        args.save_baseline_comparison_plot,
+        args.save_baseline_comparison_gif,
     )
     if any(flag is not None for flag in incompatible_single_run_flags):
         raise ValueError("Single-run plot options cannot be combined with --seed-list batch mode")
@@ -226,9 +364,10 @@ def _run_seed_batch_mode(args, seed_list: tuple[int, ...], config: TWFCConfig) -
     experiments = run_seed_batch(
         args.dataset,
         seed_list,
-        samples=args.samples,
-        noise=args.noise,
+        samples=_resolve_dataset_samples(args.dataset, args.samples),
+        noise=_resolve_dataset_noise(args.dataset, args.noise),
         hidden_dim=args.hidden_dim,
+        hidden_layers=_parse_hidden_layers(args.hidden_layers),
         config_template=config,
     )
 
@@ -281,9 +420,24 @@ def _run_seed_batch_mode(args, seed_list: tuple[int, ...], config: TWFCConfig) -
             gallery_path=gallery_path,
             seed_artifacts=seed_artifacts,
             config_summary={
-                "samples": args.samples,
-                "noise": args.noise,
-                "hidden_dim": args.hidden_dim or (8 if args.dataset == "iris" else 6),
+                "samples": _resolve_dataset_samples(args.dataset, args.samples),
+                "noise": _resolve_dataset_noise(args.dataset, args.noise),
+                "hidden_layers": ",".join(
+                    str(width)
+                    for width in _resolve_hidden_layers(
+                        dataset_name=args.dataset,
+                        hidden_dim=args.hidden_dim,
+                        hidden_layers=_parse_hidden_layers(args.hidden_layers),
+                    )
+                ),
+                "initial_jitter": _resolve_initial_jitter(
+                    _resolve_hidden_layers(
+                        dataset_name=args.dataset,
+                        hidden_dim=args.hidden_dim,
+                        hidden_layers=_parse_hidden_layers(args.hidden_layers),
+                    ),
+                    args.initial_jitter,
+                ),
                 "observation_budget": args.observation_budget,
                 "propagation_budget": args.propagation_budget,
                 "max_steps": "full" if args.max_steps == 0 else args.max_steps,

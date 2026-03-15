@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .baseline import SGDBaselineResult
 from .batch import SeedExperiment
 from .data import DatasetSplit
 from .model import ToyMLP
@@ -75,6 +76,320 @@ def save_metrics_plot(
     figure.suptitle(title or f"T-WFC metrics timeline ({collapsed_ratio} collapsed)")
     figure.savefig(output, dpi=160)
     plt.close(figure)
+    return output
+
+
+def save_baseline_metrics_comparison_plot(
+    result: ExperimentResult,
+    baseline_result: SGDBaselineResult,
+    output_path: str | Path,
+    title: str | None = None,
+) -> Path:
+    plt, _ = _load_matplotlib()
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    snapshots = result.snapshots
+    steps = np.array([snapshot.step for snapshot in snapshots], dtype=np.int64)
+    baseline_epochs = np.arange(len(baseline_result.history), dtype=np.int64)
+
+    shadow_test_loss = np.array([snapshot.shadow_metrics.test_loss for snapshot in snapshots], dtype=np.float64)
+    hard_test_loss = np.array([snapshot.hard_metrics.test_loss for snapshot in snapshots], dtype=np.float64)
+    shadow_test_accuracy = np.array([snapshot.shadow_metrics.test_accuracy for snapshot in snapshots], dtype=np.float64)
+    hard_test_accuracy = np.array([snapshot.hard_metrics.test_accuracy for snapshot in snapshots], dtype=np.float64)
+
+    baseline_train_loss = np.array([metrics.train_loss for metrics in baseline_result.history], dtype=np.float64)
+    baseline_test_loss = np.array([metrics.test_loss for metrics in baseline_result.history], dtype=np.float64)
+    baseline_train_accuracy = np.array([metrics.train_accuracy for metrics in baseline_result.history], dtype=np.float64)
+    baseline_test_accuracy = np.array([metrics.test_accuracy for metrics in baseline_result.history], dtype=np.float64)
+
+    figure, axes = plt.subplots(2, 2, figsize=(14.5, 9.0), constrained_layout=True)
+
+    axes[0, 0].plot(steps, shadow_test_loss, color="#1f77b4", linewidth=2.2, label="T-WFC shadow test")
+    axes[0, 0].plot(steps, hard_test_loss, color="#d62728", linewidth=2.2, label="T-WFC hard test")
+    axes[0, 0].axhline(
+        baseline_result.final_metrics.test_loss,
+        color="#0f766e",
+        linewidth=2.0,
+        linestyle="--",
+        label="SGD final test",
+    )
+    axes[0, 0].set_title("Loss: T-WFC timeline vs SGD endpoint")
+    axes[0, 0].set_xlabel("Committed step")
+    axes[0, 0].set_ylabel("Loss")
+    axes[0, 0].grid(alpha=0.25)
+    axes[0, 0].legend(loc="upper right")
+
+    axes[0, 1].plot(steps, shadow_test_accuracy, color="#1f77b4", linewidth=2.2, label="T-WFC shadow test")
+    axes[0, 1].plot(steps, hard_test_accuracy, color="#d62728", linewidth=2.2, label="T-WFC hard test")
+    axes[0, 1].axhline(
+        baseline_result.final_metrics.test_accuracy,
+        color="#0f766e",
+        linewidth=2.0,
+        linestyle="--",
+        label="SGD final test",
+    )
+    axes[0, 1].set_title("Accuracy: T-WFC timeline vs SGD endpoint")
+    axes[0, 1].set_xlabel("Committed step")
+    axes[0, 1].set_ylabel("Accuracy")
+    axes[0, 1].set_ylim(-0.02, 1.02)
+    axes[0, 1].grid(alpha=0.25)
+    axes[0, 1].legend(loc="lower right")
+
+    axes[1, 0].plot(baseline_epochs, baseline_train_loss, color="#0f766e", linewidth=2.2, label="SGD train")
+    axes[1, 0].plot(baseline_epochs, baseline_test_loss, color="#14b8a6", linewidth=2.2, linestyle="--", label="SGD test")
+    axes[1, 0].axhline(result.final_shadow_metrics.test_loss, color="#1f77b4", linewidth=1.8, linestyle=":", label="T-WFC shadow final")
+    axes[1, 0].axhline(result.final_hard_metrics.test_loss, color="#d62728", linewidth=1.8, linestyle=":", label="T-WFC hard final")
+    axes[1, 0].set_title("Loss: SGD timeline vs T-WFC endpoint")
+    axes[1, 0].set_xlabel("SGD epoch")
+    axes[1, 0].set_ylabel("Loss")
+    axes[1, 0].grid(alpha=0.25)
+    axes[1, 0].legend(loc="upper right")
+
+    axes[1, 1].plot(baseline_epochs, baseline_train_accuracy, color="#0f766e", linewidth=2.2, label="SGD train")
+    axes[1, 1].plot(baseline_epochs, baseline_test_accuracy, color="#14b8a6", linewidth=2.2, linestyle="--", label="SGD test")
+    axes[1, 1].axhline(result.final_shadow_metrics.test_accuracy, color="#1f77b4", linewidth=1.8, linestyle=":", label="T-WFC shadow final")
+    axes[1, 1].axhline(result.final_hard_metrics.test_accuracy, color="#d62728", linewidth=1.8, linestyle=":", label="T-WFC hard final")
+    axes[1, 1].set_title("Accuracy: SGD timeline vs T-WFC endpoint")
+    axes[1, 1].set_xlabel("SGD epoch")
+    axes[1, 1].set_ylabel("Accuracy")
+    axes[1, 1].set_ylim(-0.02, 1.02)
+    axes[1, 1].grid(alpha=0.25)
+    axes[1, 1].legend(loc="lower right")
+
+    _plot_event_markers(
+        axes=(axes[0, 0], axes[0, 1]),
+        result=result,
+        y_values=(shadow_test_loss, shadow_test_accuracy),
+    )
+    _annotate_ban_identity(axis=axes[0, 1], snapshots=snapshots[1:])
+
+    figure.suptitle(
+        title
+        or (
+            "T-WFC vs SGD metrics comparison "
+            f"(hard acc {result.final_hard_metrics.test_accuracy:.3f} vs {baseline_result.final_metrics.test_accuracy:.3f})"
+        )
+    )
+    figure.savefig(output, dpi=160)
+    plt.close(figure)
+    return output
+
+
+def save_baseline_comparison_plot(
+    model: ToyMLP,
+    dataset: DatasetSplit,
+    result: ExperimentResult,
+    baseline_result: SGDBaselineResult,
+    output_path: str | Path,
+    title: str | None = None,
+) -> Path:
+    if dataset.x_train.shape[1] != 2:
+        raise ValueError("Baseline comparison surfaces currently support only 2D datasets")
+
+    plt, ListedColormap = _load_matplotlib()
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    figure = plt.figure(figsize=(19.2, 8.8), constrained_layout=True)
+    grid = figure.add_gridspec(2, 4, height_ratios=(1.0, 1.55))
+
+    loss_axis = figure.add_subplot(grid[0, :2])
+    accuracy_axis = figure.add_subplot(grid[0, 2:])
+
+    steps = np.array([snapshot.step for snapshot in result.snapshots], dtype=np.int64)
+    shadow_test_loss = np.array([snapshot.shadow_metrics.test_loss for snapshot in result.snapshots], dtype=np.float64)
+    hard_test_loss = np.array([snapshot.hard_metrics.test_loss for snapshot in result.snapshots], dtype=np.float64)
+    shadow_test_accuracy = np.array([snapshot.shadow_metrics.test_accuracy for snapshot in result.snapshots], dtype=np.float64)
+    hard_test_accuracy = np.array([snapshot.hard_metrics.test_accuracy for snapshot in result.snapshots], dtype=np.float64)
+
+    loss_axis.plot(steps, shadow_test_loss, color="#1f77b4", linewidth=2.2, label="T-WFC shadow")
+    loss_axis.plot(steps, hard_test_loss, color="#d62728", linewidth=2.2, label="T-WFC hard")
+    loss_axis.axhline(baseline_result.final_metrics.test_loss, color="#0f766e", linewidth=2.0, linestyle="--", label="SGD final")
+    loss_axis.set_title("Test Loss")
+    loss_axis.set_xlabel("Committed step")
+    loss_axis.set_ylabel("Loss")
+    loss_axis.grid(alpha=0.25)
+    loss_axis.legend(loc="upper right")
+
+    accuracy_axis.plot(steps, shadow_test_accuracy, color="#1f77b4", linewidth=2.2, label="T-WFC shadow")
+    accuracy_axis.plot(steps, hard_test_accuracy, color="#d62728", linewidth=2.2, label="T-WFC hard")
+    accuracy_axis.axhline(
+        baseline_result.final_metrics.test_accuracy,
+        color="#0f766e",
+        linewidth=2.0,
+        linestyle="--",
+        label="SGD final",
+    )
+    accuracy_axis.set_title("Test Accuracy")
+    accuracy_axis.set_xlabel("Committed step")
+    accuracy_axis.set_ylabel("Accuracy")
+    accuracy_axis.set_ylim(-0.02, 1.02)
+    accuracy_axis.grid(alpha=0.25)
+    accuracy_axis.legend(loc="lower right")
+
+    _plot_event_markers(
+        axes=(loss_axis, accuracy_axis),
+        result=result,
+        y_values=(shadow_test_loss, shadow_test_accuracy),
+    )
+
+    grid_x, grid_y, grid_features = _build_grid(dataset)
+    surface_cmap = ListedColormap(["#dceaf7", "#fde2d0", "#e3f2df", "#f7e1f3"])
+    point_colors = np.array(["#1f77b4", "#d62728", "#2ca02c", "#9467bd"])
+    panel_specs = (
+        ("Initial Shadow", result.initial_shadow_weights, result.initial_shadow_metrics.test_accuracy, result.initial_shadow_metrics.test_loss, "#4b5563"),
+        ("Final Shadow", result.shadow_weights, result.final_shadow_metrics.test_accuracy, result.final_shadow_metrics.test_loss, "#1d4ed8"),
+        ("Final Hard", result.hard_weights, result.final_hard_metrics.test_accuracy, result.final_hard_metrics.test_loss, "#dc2626"),
+        ("SGD Final", baseline_result.weights, baseline_result.final_metrics.test_accuracy, baseline_result.final_metrics.test_loss, "#0f766e"),
+    )
+
+    for column_index, (panel_title, weights, test_accuracy, test_loss, accent_color) in enumerate(panel_specs):
+        axis = figure.add_subplot(grid[1, column_index])
+        _render_panel(
+            axis=axis,
+            model=model,
+            dataset=dataset,
+            weights=weights,
+            grid_x=grid_x,
+            grid_y=grid_y,
+            grid_features=grid_features,
+            surface_cmap=surface_cmap,
+            point_colors=point_colors,
+        )
+        axis.set_title(f"{panel_title}\nacc={test_accuracy:.3f} loss={test_loss:.4f}")
+        axis.set_xlabel("x0")
+        axis.set_ylabel("x1")
+        for spine in axis.spines.values():
+            spine.set_color(accent_color)
+            spine.set_linewidth(2.1)
+        if panel_title == "Final Hard":
+            _draw_ban_overlay(axis, result.snapshots[-1], anchor_x=0.98, anchor_y=0.02, fontsize=7.4)
+
+    figure.suptitle(
+        title
+        or (
+            "T-WFC vs SGD boundary comparison "
+            f"({result.collapsed_count}/{result.parameter_count} collapsed, "
+            f"hard acc {result.final_hard_metrics.test_accuracy:.3f} vs SGD {baseline_result.final_metrics.test_accuracy:.3f})"
+        )
+    )
+    figure.savefig(output, dpi=160)
+    plt.close(figure)
+    return output
+
+
+def save_baseline_comparison_gif(
+    model: ToyMLP,
+    dataset: DatasetSplit,
+    result: ExperimentResult,
+    baseline_result: SGDBaselineResult,
+    output_path: str | Path,
+    max_frames: int = 0,
+    frame_duration_ms: int = 450,
+    title_prefix: str | None = None,
+) -> Path:
+    if dataset.x_train.shape[1] != 2:
+        raise ValueError("Baseline comparison GIF currently supports only 2D datasets")
+    if frame_duration_ms <= 0:
+        raise ValueError("frame_duration_ms must be positive")
+
+    Image = _load_pillow()
+    plt, ListedColormap = _load_matplotlib()
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    snapshots = result.snapshots if max_frames <= 0 else _select_snapshots(result.snapshots, max_panels=max_frames)
+    grid_x, grid_y, grid_features = _build_grid(dataset)
+    surface_cmap = ListedColormap(["#dceaf7", "#fde2d0", "#e3f2df", "#f7e1f3"])
+    point_colors = np.array(["#1f77b4", "#d62728", "#2ca02c", "#9467bd"])
+    frames = []
+
+    for snapshot in snapshots:
+        figure, axes = plt.subplots(1, 3, figsize=(15.8, 5.0), constrained_layout=True)
+        panels = (
+            ("T-WFC Shadow", snapshot.shadow_weights, snapshot.shadow_metrics.test_accuracy, snapshot.shadow_metrics.test_loss, "#1d4ed8"),
+            ("T-WFC Hard", snapshot.hard_weights, snapshot.hard_metrics.test_accuracy, snapshot.hard_metrics.test_loss, "#dc2626"),
+            ("SGD Final", baseline_result.weights, baseline_result.final_metrics.test_accuracy, baseline_result.final_metrics.test_loss, "#0f766e"),
+        )
+
+        for axis, (panel_title, weights, test_accuracy, test_loss, accent_color) in zip(axes, panels, strict=True):
+            _render_panel(
+                axis=axis,
+                model=model,
+                dataset=dataset,
+                weights=weights,
+                grid_x=grid_x,
+                grid_y=grid_y,
+                grid_features=grid_features,
+                surface_cmap=surface_cmap,
+                point_colors=point_colors,
+            )
+            axis.set_title(f"{panel_title}\nacc={test_accuracy:.3f} loss={test_loss:.4f}")
+            axis.set_xlabel("x0")
+            axis.set_ylabel("x1")
+            for spine in axis.spines.values():
+                spine.set_color(accent_color)
+                spine.set_linewidth(2.0)
+
+        style = _snapshot_style(snapshot=snapshot, result=result)
+        _draw_badge_stack(
+            axes[0],
+            _snapshot_badges(snapshot=snapshot, result=result),
+            anchor_x=0.02,
+            anchor_y=0.86,
+            vertical_gap=0.12,
+            fontsize=8.2,
+        )
+        axes[2].text(
+            0.02,
+            0.98,
+            "SGD",
+            ha="left",
+            va="top",
+            transform=axes[2].transAxes,
+            fontsize=9.0,
+            fontweight="bold",
+            color="white",
+            bbox=dict(boxstyle="round,pad=0.25", facecolor="#0f766e", edgecolor="none", alpha=0.95),
+        )
+        _draw_ban_overlay(axes[1], snapshot, anchor_x=0.98, anchor_y=0.02, fontsize=7.4)
+        figure.suptitle(
+            f"{title_prefix or 'T-WFC vs SGD'} | step {snapshot.step:02d} | "
+            f"hard acc {snapshot.hard_metrics.test_accuracy:.3f} vs SGD {baseline_result.final_metrics.test_accuracy:.3f}"
+        )
+        figure.text(
+            0.5,
+            0.015,
+            (
+                f"collapsed={snapshot.collapsed_count}/{result.parameter_count} | "
+                f"shadow loss={snapshot.shadow_metrics.test_loss:.4f} | "
+                f"hard loss={snapshot.hard_metrics.test_loss:.4f} | "
+                f"sgd loss={baseline_result.final_metrics.test_loss:.4f} | "
+                f"rb={snapshot.rollback_count} alt={snapshot.backtrack_count} forced={snapshot.forced_commit_count}"
+            ),
+            ha="center",
+            va="bottom",
+            fontsize=9.2,
+        )
+
+        with BytesIO() as buffer:
+            figure.savefig(buffer, format="png", dpi=145)
+            buffer.seek(0)
+            frame = Image.open(buffer).convert("RGBA").copy()
+        plt.close(figure)
+        frames.append(frame)
+
+    frames[0].save(
+        output,
+        save_all=True,
+        append_images=frames[1:],
+        duration=frame_duration_ms,
+        loop=0,
+        disposal=2,
+    )
+    for frame in frames:
+        frame.close()
     return output
 
 

@@ -22,3 +22,6 @@
 | 2026-03-15 | Added installable `t-wfc` CLI metadata and bilingual verification guides | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
 | 2026-03-15 | Removed internal handoff links from public README navigation | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
 | 2026-03-15 | Refreshed both README files with checked-in GIF-heavy public showcase media | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
+| 2026-03-15 | Added spiral dataset, multi-layer MLP support, and a numpy SGD comparison baseline | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
+| 2026-03-15 | Added T-WFC-vs-SGD comparison boards, GIF export, and a visual summary report | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
+| 2026-03-15 | Promoted T-WFC-vs-SGD comparison visuals into public README showcase media | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |

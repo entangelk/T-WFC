@@ -5,12 +5,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
+
+from t_wfc.baseline import SGDBaselineConfig, train_sgd_classifier
 from t_wfc.batch import export_seed_artifacts, run_seed_batch
-from t_wfc.data import load_dataset, load_iris_dataset, make_moons_dataset
+from t_wfc.data import load_dataset, load_iris_dataset, make_moons_dataset, make_spiral_dataset
 from t_wfc.model import MLPConfig, ToyMLP
 from t_wfc.reporting import save_seed_markdown_report
 from t_wfc.trainer import TWFCConfig, TWFCTrainer
 from t_wfc.visualization import (
+    save_baseline_comparison_gif,
+    save_baseline_comparison_plot,
+    save_baseline_metrics_comparison_plot,
     save_experiment_plot,
     save_metrics_plot,
     save_progress_plot,
@@ -42,6 +48,37 @@ class IrisDatasetTest(unittest.TestCase):
         self.assertGreaterEqual(int((dataset.y_test == 0).sum()), 1)
         self.assertGreaterEqual(int((dataset.y_test == 1).sum()), 1)
         self.assertGreaterEqual(int((dataset.y_test == 2).sum()), 1)
+
+
+class SpiralDatasetTest(unittest.TestCase):
+    def test_dataset_shapes_and_labels(self) -> None:
+        dataset = load_dataset("spiral", n_samples=150, noise=0.14, seed=7)
+
+        self.assertEqual(dataset.x_train.shape[1], 2)
+        self.assertEqual(dataset.x_test.shape[1], 2)
+        self.assertSetEqual(set(dataset.y_train.tolist()) | set(dataset.y_test.tolist()), {0, 1, 2})
+        self.assertGreaterEqual(int((dataset.y_test == 0).sum()), 1)
+        self.assertGreaterEqual(int((dataset.y_test == 1).sum()), 1)
+        self.assertGreaterEqual(int((dataset.y_test == 2).sum()), 1)
+
+
+class MultiLayerModelSmokeTest(unittest.TestCase):
+    def test_multilayer_model_supports_forward_and_gradient(self) -> None:
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=3, hidden_layers=(5, 4)))
+        weights = model.random_vector(np.random.default_rng(3))
+        features = np.array(
+            [[0.1, -0.2], [0.3, 0.4], [-0.5, 0.2]],
+            dtype=float,
+        )
+        labels = np.array([0, 2, 1], dtype=int)
+
+        logits = model.forward(weights, features)
+        loss, gradient = model.loss_and_gradient(weights, features, labels)
+
+        self.assertEqual(logits.shape, (3, 3))
+        self.assertEqual(gradient.shape, (model.parameter_count,))
+        self.assertTrue(math.isfinite(loss))
+        self.assertEqual(model.architecture_label, "2-5-4-3")
 
 
 class TWFCTrainerSmokeTest(unittest.TestCase):
@@ -104,6 +141,31 @@ class TWFCTrainerSmokeTest(unittest.TestCase):
         self.assertEqual(len(result.step_logs), 12)
         self.assertTrue(math.isfinite(result.final_shadow_metrics.test_loss))
         self.assertTrue(math.isfinite(result.final_hard_metrics.test_loss))
+        self.assertGreaterEqual(result.final_hard_metrics.test_accuracy, 0.0)
+        self.assertLessEqual(result.final_hard_metrics.test_accuracy, 1.0)
+
+    def test_spiral_partial_run_supports_multilayer_model(self) -> None:
+        dataset = make_spiral_dataset(n_samples=180, noise=0.14, seed=21)
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=3, hidden_layers=(12, 12)))
+        trainer = TWFCTrainer(
+            model=model,
+            config=TWFCConfig(
+                initial_jitter=0.08,
+                observation_budget=10,
+                propagation_budget=8,
+                max_steps=18,
+                seed=21,
+            ),
+        )
+
+        result = trainer.fit(dataset)
+
+        self.assertEqual(result.collapsed_count, 18)
+        self.assertEqual(result.parameter_count, model.parameter_count)
+        self.assertGreater(model.parameter_count, 150)
+        self.assertTrue(math.isfinite(result.final_shadow_metrics.test_loss))
+        self.assertTrue(math.isfinite(result.final_hard_metrics.test_loss))
+        self.assertNotEqual(result.initial_shadow_metrics.test_loss, result.final_shadow_metrics.test_loss)
         self.assertGreaterEqual(result.final_hard_metrics.test_accuracy, 0.0)
         self.assertLessEqual(result.final_hard_metrics.test_accuracy, 1.0)
 
@@ -274,6 +336,59 @@ class TWFCTrainerSmokeTest(unittest.TestCase):
             self.assertTrue(output_path.exists())
             self.assertGreater(output_path.stat().st_size, 0)
 
+    def test_twfc_vs_sgd_comparison_artifacts_are_written(self) -> None:
+        dataset = make_moons_dataset(n_samples=80, noise=0.06, seed=43)
+        model = ToyMLP(MLPConfig(input_dim=2, hidden_dim=6, output_dim=2))
+        trainer = TWFCTrainer(
+            model=model,
+            config=TWFCConfig(
+                observation_budget=5,
+                propagation_budget=4,
+                max_steps=6,
+                seed=43,
+            ),
+        )
+        result = trainer.fit(dataset)
+        baseline_result = train_sgd_classifier(
+            model=model,
+            dataset=dataset,
+            config=SGDBaselineConfig(
+                epochs=80,
+                learning_rate=0.08,
+                learning_rate_decay=0.01,
+                batch_size=16,
+                seed=43,
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            metrics_path = temp_root / "twfc_vs_sgd_metrics.png"
+            comparison_plot_path = temp_root / "twfc_vs_sgd_boundaries.png"
+            comparison_gif_path = temp_root / "twfc_vs_sgd.gif"
+
+            saved_metrics = save_baseline_metrics_comparison_plot(result, baseline_result, metrics_path)
+            saved_plot = save_baseline_comparison_plot(model, dataset, result, baseline_result, comparison_plot_path)
+            saved_gif = save_baseline_comparison_gif(
+                model,
+                dataset,
+                result,
+                baseline_result,
+                comparison_gif_path,
+                max_frames=4,
+                frame_duration_ms=220,
+            )
+
+            self.assertEqual(saved_metrics, metrics_path)
+            self.assertEqual(saved_plot, comparison_plot_path)
+            self.assertEqual(saved_gif, comparison_gif_path)
+            self.assertTrue(metrics_path.exists())
+            self.assertTrue(comparison_plot_path.exists())
+            self.assertTrue(comparison_gif_path.exists())
+            self.assertGreater(metrics_path.stat().st_size, 0)
+            self.assertGreater(comparison_plot_path.stat().st_size, 0)
+            self.assertGreater(comparison_gif_path.stat().st_size, 0)
+
     def test_seed_gallery_and_markdown_report_are_written(self) -> None:
         experiments = run_seed_batch(
             "make_moons",
@@ -380,6 +495,30 @@ class TWFCTrainerSmokeTest(unittest.TestCase):
             self.assertNotIn("Peak ban focus: `clean`", report_text)
             self.assertNotIn("Latest ban delta: `none`", report_text)
             self.assertIn("@ s", report_text)
+
+
+class SGDBaselineSmokeTest(unittest.TestCase):
+    def test_sgd_baseline_improves_on_iris_with_multilayer_model(self) -> None:
+        dataset = load_iris_dataset(seed=9)
+        model = ToyMLP(MLPConfig(input_dim=4, output_dim=3, hidden_layers=(16, 16)))
+
+        result = train_sgd_classifier(
+            model=model,
+            dataset=dataset,
+            config=SGDBaselineConfig(
+                epochs=160,
+                learning_rate=0.09,
+                learning_rate_decay=0.01,
+                batch_size=24,
+                seed=9,
+            ),
+        )
+
+        self.assertGreater(result.final_metrics.train_accuracy, result.initial_metrics.train_accuracy)
+        self.assertGreater(result.final_metrics.test_accuracy, result.initial_metrics.test_accuracy)
+        self.assertLess(result.final_metrics.train_loss, result.initial_metrics.train_loss)
+        self.assertLess(result.final_metrics.test_loss, result.initial_metrics.test_loss)
+        self.assertGreaterEqual(result.final_metrics.test_accuracy, 0.85)
 
 
 if __name__ == "__main__":

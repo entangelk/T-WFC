@@ -56,7 +56,7 @@ def save_seed_markdown_report(
     lines.append(f"- Generated: {datetime.now().isoformat(timespec='seconds')}")
     lines.append(f"- Dataset: `{dataset_name}`")
     lines.append(
-        f"- Model: `{model.config.input_dim}-{model.config.hidden_dim}-{model.config.output_dim}` "
+        f"- Model: `{model.architecture_label}` "
         f"with `{model.parameter_count}` parameters"
     )
     lines.append(f"- Seeds: `{', '.join(str(experiment.seed) for experiment in experiments)}`")

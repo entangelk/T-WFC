@@ -88,6 +88,26 @@
   - added side-by-side sections for stable-vs-stress behavior and static-vs-event-aware visualization
   - added a checked-in seed gallery so variability across seeds is visible without running the code first
   - made it explicit that the README visuals are generated artifacts, not mock illustrations
+- Expanded the prototype beyond the original single-hidden-layer toy path.
+  - added a larger synthetic `spiral` dataset with stratified train/test splitting
+  - generalized `ToyMLP` to support multi-layer architectures such as `2-24-24-3` and `4-16-16-3`
+  - added `loss_and_gradient` and random initialization helpers so the same model can back a `numpy` SGD baseline
+  - added `src/t_wfc/baseline.py` with a simple SGD training loop for architecture-matched comparisons
+  - added automatic initial jitter for multi-layer T-WFC runs so perfectly symmetric zero-signal starts do not freeze observation
+  - extended the CLI with `--hidden-layers`, `--compare-sgd`, and SGD hyperparameter flags
+  - updated public docs and verification guides to explain the deeper-model path and optimizer comparison
+- Added comparison-focused visualization outputs and organized fresh artifacts.
+  - added `save_baseline_metrics_comparison_plot` for dataset-agnostic `T-WFC vs SGD` metric comparison
+  - added `save_baseline_comparison_plot` for 2D boundary boards that place `initial shadow`, `final shadow`, `final hard`, and `SGD final` side by side
+  - added `save_baseline_comparison_gif` for 2D animations that show T-WFC collapse progression next to a fixed SGD endpoint
+  - extended the CLI with `--save-baseline-metrics-plot`, `--save-baseline-comparison-plot`, and `--save-baseline-comparison-gif`
+  - generated local comparison artifacts for `make_moons`, `spiral`, and `iris`
+  - wrote `artifacts/reports/twfc_vs_sgd_visual_summary.md` to organize the new outputs into a quick visual tour
+- Promoted a small subset of comparison visuals into checked-in public showcase media.
+  - copied `make_moons` comparison GIF and boundary board into `docs/media/`
+  - copied `spiral` comparison GIF into `docs/media/`
+  - copied `iris` metrics comparison board into `docs/media/`
+  - embedded those media directly inside both public README files
 - Added bilingual project docs and language switching links.
   - created `README.md` and `README.ko.md`
   - created `docs/CONCEPT.en.md` as an English mirror of the main concept doc
@@ -131,6 +151,10 @@
 - Kept public README navigation limited to concept, verification, and change-history docs, while leaving handoff material out of the public entry path.
 - Chose to keep a small checked-in `docs/media/` showcase set so public visitors can understand the project visually before running any commands.
 - Centered the README narrative on contrasts that matter to the algorithm: stable search vs contradiction-heavy search, and static final-state views vs event-aware collapse timelines.
+- Kept the deeper-model scaling work conservative: instead of jumping to external heavyweight datasets first, added a larger 2D `spiral` path plus a conventional SGD baseline so scaling issues remain visible and debuggable.
+- Introduced initial probability jitter only as a light symmetry breaker for deeper models, so the original single-layer make_moons experiments remain close to the earlier behavior.
+- Kept the new comparison artifacts in `artifacts/` rather than `docs/media/` for now, so they stay easy to iterate on before deciding which ones should become permanent public showcase media.
+- Broke that rule selectively for a tiny curated subset of comparison visuals, because the public README needed the new `T-WFC vs SGD` story to be visible without extra clicks.
 
 ## Verification
 
@@ -188,6 +212,26 @@
 - `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-gallery docs/media/make_moons_seed_gallery.png --gallery-columns 3 --save-seed-artifacts-dir docs/media/make_moons_seed_runs --save-md-report docs/media/make_moons_seed_report.md --report-title "T-WFC make_moons Seed Sweep"`
   - Result: passed
   - Summary: generated the checked-in public seed gallery and linked drill-down report used from the README showcase section
+- `python3 -m py_compile src/t_wfc/*.py tests/test_smoke.py`
+  - Result: passed
+- `PYTHONPATH=src python3 -m unittest discover -s tests`
+  - Result: passed (`Ran 17 tests in 14.291s`)
+  - Summary: now covers `spiral` dataset loading, multi-layer model gradients, deeper T-WFC runs, and the SGD baseline path
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset spiral --samples 240 --hidden-layers 24,24 --max-steps 18 --show-steps 3`
+  - Result: passed
+  - Summary: multi-layer T-WFC on `spiral` now improves shadow test accuracy from `0.333 -> 0.383` after symmetry-breaking initial jitter
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset iris --hidden-layers 16,16 --max-steps 18 --compare-sgd --sgd-epochs 160 --sgd-batch-size 24 --show-steps 3`
+  - Result: passed
+  - Summary: side-by-side comparison showed T-WFC shadow test accuracy `0.333 -> 0.806`, hard test accuracy `0.528`, and SGD baseline test accuracy `0.944`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --samples 160 --hidden-layers 12,12 --max-steps 12 --compare-sgd --sgd-epochs 140 --sgd-batch-size 24 --show-steps 0 --save-baseline-metrics-plot artifacts/make_moons/plots/twfc_vs_sgd_metrics.png --save-baseline-comparison-plot artifacts/make_moons/plots/twfc_vs_sgd_boundaries.png --save-baseline-comparison-gif artifacts/make_moons/animations/twfc_vs_sgd.gif --max-frame-count 6 --gif-frame-duration-ms 320`
+  - Result: passed
+  - Summary: generated the clearest local comparison showcase; T-WFC hard test accuracy reached `0.950` versus SGD `0.975`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset spiral --samples 360 --hidden-layers 24,24 --max-steps 24 --compare-sgd --sgd-epochs 220 --sgd-batch-size 32 --show-steps 0 --save-baseline-metrics-plot artifacts/spiral/plots/twfc_vs_sgd_metrics.png --save-baseline-comparison-plot artifacts/spiral/plots/twfc_vs_sgd_boundaries.png --save-baseline-comparison-gif artifacts/spiral/animations/twfc_vs_sgd.gif --max-frame-count 6 --gif-frame-duration-ms 360`
+  - Result: passed
+  - Summary: generated the deeper-model scaling comparison set; T-WFC hard test accuracy reached `0.367` versus SGD `0.422`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset iris --hidden-layers 16,16 --max-steps 24 --compare-sgd --sgd-epochs 180 --sgd-batch-size 24 --show-steps 0 --save-baseline-metrics-plot artifacts/iris/plots/twfc_vs_sgd_metrics.png`
+  - Result: passed
+  - Summary: generated a clean non-2D metrics comparison showing T-WFC shadow test accuracy `0.833`, T-WFC hard test accuracy `0.639`, and SGD test accuracy `0.944`
 
 ## Next Steps
 

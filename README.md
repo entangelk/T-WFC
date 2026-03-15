@@ -103,9 +103,48 @@ Historical note: before the frontier-based forced-commit fallback, this stress s
 
 The gallery is meant to answer a different question from the GIFs: not “what happened in one run?” but “how much does behavior move when only the seed changes?” Example generated report: [docs/media/make_moons_seed_report.md](./docs/media/make_moons_seed_report.md).
 
+## T-WFC vs SGD
+
+<p align="center">
+  <img src="./docs/media/make_moons_twfc_vs_sgd.gif" alt="T-WFC vs SGD on make_moons" width="950">
+</p>
+<p align="center"><sub>On <code>make_moons</code>, T-WFC collapse progression is shown next to the fixed SGD endpoint so the process and the baseline are visible at the same time.</sub></p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/media/make_moons_twfc_vs_sgd_boundaries.png" alt="T-WFC vs SGD boundary board on make_moons" width="100%">
+    </td>
+    <td width="50%">
+      <img src="./docs/media/spiral_twfc_vs_sgd.gif" alt="T-WFC vs SGD on spiral" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>Presentation-friendly case: make_moons</strong><br>
+      T-WFC hard weights reach <code>0.950</code> test accuracy while SGD reaches <code>0.975</code>. This is the most eye-catching comparison because the gap is small and the collapse process is easy to read.
+    </td>
+    <td valign="top">
+      <strong>Honest scaling case: spiral</strong><br>
+      The deeper model now moves thanks to symmetry-breaking jitter, but the GIF also makes the remaining quality gap obvious. T-WFC hard test accuracy reaches <code>0.367</code> while SGD reaches <code>0.422</code>.
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="./docs/media/iris_twfc_vs_sgd_metrics.png" alt="T-WFC vs SGD metrics on iris" width="920">
+</p>
+<p align="center"><sub><code>iris</code> is the clean metric-gap example: T-WFC shadow test accuracy reaches <code>0.833</code>, hard test accuracy reaches <code>0.639</code>, and SGD reaches <code>0.944</code>.</sub></p>
+
+If someone asks “does T-WFC do anything interesting?”, show the `make_moons` GIF.
+
+If someone asks “does it already scale like SGD?”, show `spiral` and `iris`.
+
 ## Current Status
 
-- `make_moons` and vendored `iris.csv` are both supported.
+- `make_moons`, `spiral`, and vendored `iris.csv` are supported.
+- The model path now supports both the original single-hidden-layer toy MLP and deeper configurations such as `2-24-24-3` or `4-16-16-3`.
+- Multi-layer runs now apply a small symmetry-breaking initial jitter by default so single-weight observation does not get stuck in a perfectly flat zero-signal state.
 - The trainer already supports observation, single-weight collapse, propagation, rollback-aware backtracking, and hybrid-scored forced commits.
 - `make_moons` runs can save:
   - an overview plot with `initial shadow / final shadow / final hard`
@@ -118,6 +157,8 @@ The gallery is meant to answer a different question from the GIFs: not “what h
   - ban overlays now identify which weights accumulated bans, not only how many bans existed
 - Any dataset run can save a metrics timeline plot for shadow/hard loss and accuracy.
 - Multi-seed runs can save a comparison gallery, per-seed drill-down artifacts, and a Markdown report with best/worst seed highlights, peak-ban summaries, and direct links to each seed's metrics/storyboard/GIF outputs.
+- The CLI can now run a `numpy` SGD baseline on the same MLP so T-WFC runs can be compared against a conventional optimizer path.
+- 2D runs can now save a `T-WFC vs SGD` boundary board and comparison GIF, while any dataset can save a `T-WFC vs SGD` metrics board.
 - The package now exposes an installable `t-wfc` CLI via `pyproject.toml`.
 
 ## Quickstart
@@ -127,6 +168,9 @@ python3 -m pip install -e .
 t-wfc --help
 PYTHONPATH=src python3 -m unittest discover -s tests
 t-wfc --dataset make_moons --max-steps 8 --show-steps 6
+t-wfc --dataset spiral --samples 240 --hidden-layers 24,24 --max-steps 18 --show-steps 6
+t-wfc --dataset iris --hidden-layers 16,16 --max-steps 18 --compare-sgd --sgd-epochs 160 --sgd-batch-size 24 --show-steps 6
+t-wfc --dataset make_moons --samples 160 --hidden-layers 12,12 --max-steps 12 --compare-sgd --sgd-epochs 140 --sgd-batch-size 24 --save-baseline-metrics-plot artifacts/make_moons/plots/twfc_vs_sgd_metrics.png --save-baseline-comparison-plot artifacts/make_moons/plots/twfc_vs_sgd_boundaries.png --save-baseline-comparison-gif artifacts/make_moons/animations/twfc_vs_sgd.gif --max-frame-count 6 --gif-frame-duration-ms 320
 t-wfc --dataset make_moons --max-steps 8 --show-steps 2 --save-plot artifacts/make_moons/plots/overview.png --save-progress-plot artifacts/make_moons/plots/progress.png --progress-panels 5 --save-metrics-plot artifacts/make_moons/plots/metrics.png --save-frames-dir artifacts/make_moons/frames/steps --max-frame-count 6
 t-wfc --dataset make_moons --max-steps 8 --show-steps 2 --save-storyboard artifacts/make_moons/plots/storyboard.png --storyboard-panels 5 --save-gif artifacts/make_moons/animations/steps.gif --max-frame-count 6 --gif-frame-duration-ms 350
 t-wfc --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --max-frontier-rollbacks 1 --max-attempt-multiplier 12 --show-steps 4 --save-metrics-plot artifacts/make_moons/plots/stress_metrics.png --save-storyboard artifacts/make_moons/plots/stress_storyboard.png --storyboard-panels 5 --save-gif artifacts/make_moons/animations/stress.gif --max-frame-count 5 --gif-frame-duration-ms 420
@@ -144,12 +188,13 @@ t-wfc --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-g
 ## Repository Map
 
 - `src/t_wfc/data.py`: dataset loading and splits
-- `src/t_wfc/model.py`: toy MLP definition
+- `src/t_wfc/model.py`: single-layer and multi-layer MLP definition plus backprop support for the SGD baseline
+- `src/t_wfc/baseline.py`: `numpy` SGD baseline training for side-by-side comparison
 - `src/t_wfc/state.py`: discrete probability state
 - `src/t_wfc/trainer.py`: collapse loop, rollback logic, metrics, snapshots
 - `src/t_wfc/batch.py`: repeated experiment runs across seed lists and per-seed artifact export
 - `src/t_wfc/reporting.py`: Markdown seed-sweep report generation with drill-down links
-- `src/t_wfc/visualization.py`: overview, progress, metrics, storyboard, GIF, frame-sequence, and seed-gallery plots
+- `src/t_wfc/visualization.py`: overview, progress, metrics, storyboard, GIF, seed-gallery, and `T-WFC vs SGD` comparison plots
 - `src/t_wfc/cli.py`: command-line entry point
 - `docs/media/`: curated public showcase media used directly in this README
 - `pyproject.toml`: package metadata, dependencies, and the `t-wfc` console script

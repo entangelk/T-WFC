@@ -12,6 +12,7 @@ from .state import StateSnapshot, WeightState
 @dataclass(frozen=True)
 class TWFCConfig:
     domain: tuple[float, ...] = (-1.0, -0.5, 0.0, 0.5, 1.0)
+    initial_jitter: float = 0.0
     observation_budget: int = 8
     propagation_budget: int = 6
     max_steps: int | None = None
@@ -130,6 +131,7 @@ class TWFCTrainer:
 
     def fit(self, dataset: DatasetSplit) -> ExperimentResult:
         state = WeightState.uniform(self.model.parameter_count, self.domain)
+        self._apply_initial_jitter(state)
 
         initial_shadow = state.expected_vector()
         initial_shadow_metrics = self._evaluate(initial_shadow, dataset)
@@ -680,6 +682,23 @@ class TWFCTrainer:
             + self.config.hard_loss_weight * hard_loss
             + self.config.hard_gap_weight * hard_gap
         )
+
+    def _apply_initial_jitter(self, state: WeightState) -> None:
+        if self.config.initial_jitter <= 0.0:
+            return
+
+        noise = self.rng.normal(
+            0.0,
+            self.config.initial_jitter,
+            size=state.probabilities.shape,
+        )
+        noise -= noise.mean(axis=1, keepdims=True)
+
+        logits = np.log(np.clip(state.probabilities, 1e-12, 1.0)) + noise
+        logits -= logits.max(axis=1, keepdims=True)
+        probabilities = np.exp(logits)
+        probabilities /= probabilities.sum(axis=1, keepdims=True)
+        state.probabilities[:] = probabilities
 
     @staticmethod
     def _entropy(probabilities: np.ndarray) -> float:

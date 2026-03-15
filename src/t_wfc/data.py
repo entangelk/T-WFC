@@ -31,6 +31,15 @@ def load_dataset(name: str, **kwargs: float | int | str | Path) -> DatasetSplit:
             seed=int(kwargs.get("seed", 7)),
             csv_path=None if csv_path is None else Path(str(csv_path)),
         )
+    if name == "spiral":
+        return make_spiral_dataset(
+            n_samples=int(kwargs.get("n_samples", 600)),
+            noise=float(kwargs.get("noise", 0.16)),
+            test_ratio=float(kwargs.get("test_ratio", 0.25)),
+            seed=int(kwargs.get("seed", 7)),
+            classes=int(kwargs.get("classes", 3)),
+            turns=float(kwargs.get("turns", 1.75)),
+        )
     raise ValueError(f"Unsupported dataset: {name}")
 
 
@@ -107,6 +116,56 @@ def load_iris_dataset(
     labels = raw[:, feature_count].astype(np.int64)
 
     rng = np.random.default_rng(seed)
+    train_indices, test_indices = _stratified_split_indices(labels, test_ratio, rng)
+    train_x = features[train_indices]
+    train_y = labels[train_indices]
+    test_x = features[test_indices]
+    test_y = labels[test_indices]
+
+    return _standardize_split(train_x, train_y, test_x, test_y)
+
+
+def make_spiral_dataset(
+    n_samples: int = 600,
+    noise: float = 0.16,
+    test_ratio: float = 0.25,
+    seed: int = 7,
+    classes: int = 3,
+    turns: float = 1.75,
+) -> DatasetSplit:
+    if n_samples < classes * 6:
+        raise ValueError("n_samples must be at least classes * 6")
+    if classes < 2:
+        raise ValueError("classes must be at least 2")
+    if turns <= 0.0:
+        raise ValueError("turns must be positive")
+    if not 0.0 < test_ratio < 0.5:
+        raise ValueError("test_ratio must be between 0.0 and 0.5")
+
+    rng = np.random.default_rng(seed)
+    class_counts = np.full(classes, n_samples // classes, dtype=np.int64)
+    class_counts[: n_samples % classes] += 1
+
+    feature_blocks: list[np.ndarray] = []
+    label_blocks: list[np.ndarray] = []
+    full_rotation = turns * 2.0 * np.pi
+
+    for class_index, class_count in enumerate(class_counts.tolist()):
+        base_radius = np.linspace(0.08, 1.0, class_count, dtype=np.float64)
+        base_angle = np.linspace(0.0, full_rotation, class_count, dtype=np.float64)
+        angle_offset = (2.0 * np.pi * class_index) / classes
+
+        radius = np.clip(base_radius + rng.normal(0.0, noise * 0.08, size=class_count), 0.02, None)
+        theta = base_angle + angle_offset + rng.normal(0.0, noise, size=class_count)
+
+        x_values = radius * np.cos(theta)
+        y_values = radius * np.sin(theta)
+        feature_blocks.append(np.column_stack((x_values, y_values)))
+        label_blocks.append(np.full(class_count, class_index, dtype=np.int64))
+
+    features = np.vstack(feature_blocks)
+    labels = np.concatenate(label_blocks)
+
     train_indices, test_indices = _stratified_split_indices(labels, test_ratio, rng)
     train_x = features[train_indices]
     train_y = labels[train_indices]
