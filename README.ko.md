@@ -43,7 +43,6 @@ t-wfc --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-g
 - 컨셉 문서, 한국어: [docs/CONCEPT.md](./docs/CONCEPT.md)
 - 검증 가이드, 영어: [docs/VERIFICATION.en.md](./docs/VERIFICATION.en.md)
 - 검증 가이드, 한국어: [docs/VERIFICATION.md](./docs/VERIFICATION.md)
-- 프로젝트 handoff: [HANDOFF.md](./HANDOFF.md)
 - 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 
 ## 저장소 구조

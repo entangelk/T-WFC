@@ -20,3 +20,4 @@
 | 2026-03-15 | Added best/worst report highlights plus peak-ban summaries to Markdown seed reports | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
 | 2026-03-15 | Hardened `.gitignore` for public publishing hygiene | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
 | 2026-03-15 | Added installable `t-wfc` CLI metadata and bilingual verification guides | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
+| 2026-03-15 | Removed internal handoff links from public README navigation | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |

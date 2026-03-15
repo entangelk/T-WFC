@@ -43,7 +43,6 @@ t-wfc --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-g
 - Concept, Korean: [docs/CONCEPT.md](./docs/CONCEPT.md)
 - Verification, English: [docs/VERIFICATION.en.md](./docs/VERIFICATION.en.md)
 - Verification, Korean: [docs/VERIFICATION.md](./docs/VERIFICATION.md)
-- Project handoff: [HANDOFF.md](./HANDOFF.md)
 - Change history: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Repository Map

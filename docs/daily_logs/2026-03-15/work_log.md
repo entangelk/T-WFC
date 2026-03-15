@@ -79,6 +79,9 @@
   - added a `t-wfc` console script entry point
   - added bilingual verification guides in `docs/VERIFICATION.md` and `docs/VERIFICATION.en.md`
   - updated README quickstarts to use dataset-scoped artifact paths such as `artifacts/make_moons/...`
+- Cleaned public README references.
+  - removed `HANDOFF.md` links from `README.md` and `README.ko.md`
+  - kept handoff as an internal working document instead of a public-facing navigation target
 - Added bilingual project docs and language switching links.
   - created `README.md` and `README.ko.md`
   - created `docs/CONCEPT.en.md` as an English mirror of the main concept doc
@@ -119,6 +122,7 @@
 - Kept `.gitignore` focused on clearly local or generated files so repository source and public-facing docs stay publishable by default.
 - Switched package metadata to `README.md` because public package consumers should land on the repository-facing overview, not an internal concept-first document.
 - Recommended dataset-scoped artifact directories in docs so report growth stays manageable as more runs accumulate.
+- Kept public README navigation limited to concept, verification, and change-history docs, while leaving handoff material out of the public entry path.
 
 ## Verification
 
