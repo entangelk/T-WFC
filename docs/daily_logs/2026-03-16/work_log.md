@@ -8,6 +8,7 @@
 - Probe hybrid forced-commit score weights carefully before changing defaults.
 - Tune the next deeper-model default only if it improves `hard_weights` behavior without disturbing the single-layer baseline.
 - Promote the seed-report experience to a README-worthy state once highlighted runs can be understood without extra click-through.
+- Re-audit the public README and checked-in visualizations so every public metric claim matches the current code path.
 
 ## Completed Work
 
@@ -94,6 +95,22 @@
   - refreshed the repository map wording for `src/t_wfc/reporting.py`
 - Regenerated `docs/media/make_moons_seed_report.md`.
   - refreshed the checked-in public sample report so the linked example now shows the new inline best/worst previews
+- Re-audited the public README and checked-in showcase media.
+  - confirmed that every `docs/media/...` reference used by the public README files exists
+  - confirmed that the refreshed sample seed report really embeds best/worst preview images
+  - found that the old public `make_moons` and `iris` comparison captions no longer matched the current multi-layer defaults
+- Regenerated the public comparison media used directly by the README files.
+  - refreshed `docs/media/make_moons_twfc_vs_sgd.gif`
+  - refreshed `docs/media/make_moons_twfc_vs_sgd_boundaries.png`
+  - refreshed `docs/media/spiral_twfc_vs_sgd.gif`
+  - refreshed `docs/media/iris_twfc_vs_sgd_metrics.png`
+- Updated `README.md` and `README.ko.md` again.
+  - corrected the public `make_moons` comparison caption from hard acc `0.950` to `0.925`
+  - corrected the public `iris` comparison caption from shadow/hard `0.833/0.639` to `0.750/0.556`
+  - added the multi-layer auto-temperature default to the public current-status summary
+- Updated `HANDOFF.md`.
+  - recorded that the public README comparison captions and showcase media were re-verified against the current code
+- Updated `CHANGELOG.md` with a new 2026-03-16 entry for the public comparison refresh.
 
 ## Technical Decisions
 
@@ -118,6 +135,9 @@
 - Kept the new report preview feature scoped to the highlight section only:
   - best/worst sections get inline images because they are the report's highest-signal summary blocks
   - full seed drilldowns remain link-based so large seed sweeps do not turn into image-heavy walls
+- Treated the public README audit as a verification task, not just a wording pass:
+  - if a public metric claim no longer matched a rerun, the README was updated to the rerun rather than keeping a stale historical number
+  - the current `make_moons` and `iris` captions now reflect fresh local verification runs
 
 ## Verification
 
@@ -151,6 +171,21 @@
 - `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-gallery docs/media/make_moons_seed_gallery.png --gallery-columns 3 --save-seed-artifacts-dir docs/media/make_moons_seed_runs --save-md-report docs/media/make_moons_seed_report.md --report-title "T-WFC make_moons Seed Sweep"`
   - Result: passed
   - Summary: regenerated the public sample seed report and seed artifact bundle; the checked-in report now renders best/worst storyboard and metrics previews inline
+- `python3 - <<'PY' ... README media reference audit + image size check ... PY`
+  - Result: passed
+  - Summary: every `docs/media` path referenced from `README.md` and `README.ko.md` exists, and the checked-in PNG showcase files opened successfully for basic size inspection
+- `PYTHONPATH=src python3 - <<'PY' ... reproduce README comparison metrics for make_moons / spiral / iris ... PY`
+  - Result: passed
+  - Summary: `spiral` still matched the public caption, while `make_moons` and `iris` needed caption refreshes to match the current multi-layer defaults
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --samples 160 --hidden-layers 12,12 --max-steps 12 --compare-sgd --sgd-epochs 140 --sgd-batch-size 24 --save-baseline-comparison-plot docs/media/make_moons_twfc_vs_sgd_boundaries.png --save-baseline-comparison-gif docs/media/make_moons_twfc_vs_sgd.gif --max-frame-count 6 --gif-frame-duration-ms 320`
+  - Result: passed
+  - Summary: refreshed the public `make_moons` comparison visuals; current rerun metrics are shadow acc `0.950`, hard acc `0.925`, SGD acc `0.975`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset spiral --samples 360 --hidden-layers 24,24 --max-steps 24 --compare-sgd --sgd-epochs 220 --sgd-batch-size 32 --save-baseline-comparison-gif docs/media/spiral_twfc_vs_sgd.gif --max-frame-count 6 --gif-frame-duration-ms 360`
+  - Result: passed
+  - Summary: refreshed the public `spiral` comparison GIF; rerun metrics stayed aligned with the public caption at hard acc `0.367` vs SGD `0.422`
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset iris --hidden-layers 16,16 --max-steps 18 --compare-sgd --sgd-epochs 160 --sgd-batch-size 24 --save-baseline-metrics-plot docs/media/iris_twfc_vs_sgd_metrics.png`
+  - Result: passed
+  - Summary: refreshed the public `iris` comparison metrics board; current rerun metrics are shadow acc `0.750`, hard acc `0.556`, SGD acc `0.944`
 
 ## Next Steps
 

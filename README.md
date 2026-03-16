@@ -122,7 +122,7 @@ The gallery is meant to answer a different question from the GIFs: not “what h
   <tr>
     <td valign="top">
       <strong>Presentation-friendly case: make_moons</strong><br>
-      T-WFC hard weights reach <code>0.950</code> test accuracy while SGD reaches <code>0.975</code>. This is the most eye-catching comparison because the gap is small and the collapse process is easy to read.
+      T-WFC hard weights reach <code>0.925</code> test accuracy while SGD reaches <code>0.975</code>. This is still the most eye-catching comparison because the gap stays relatively small and the collapse process is easy to read.
     </td>
     <td valign="top">
       <strong>Honest scaling case: spiral</strong><br>
@@ -134,7 +134,7 @@ The gallery is meant to answer a different question from the GIFs: not “what h
 <p align="center">
   <img src="./docs/media/iris_twfc_vs_sgd_metrics.png" alt="T-WFC vs SGD metrics on iris" width="920">
 </p>
-<p align="center"><sub><code>iris</code> is the clean metric-gap example: T-WFC shadow test accuracy reaches <code>0.833</code>, hard test accuracy reaches <code>0.639</code>, and SGD reaches <code>0.944</code>.</sub></p>
+<p align="center"><sub><code>iris</code> is the clean metric-gap example: T-WFC shadow test accuracy reaches <code>0.750</code>, hard test accuracy reaches <code>0.556</code>, and SGD reaches <code>0.944</code>.</sub></p>
 
 If someone asks “does T-WFC do anything interesting?”, show the `make_moons` GIF.
 
@@ -145,6 +145,7 @@ If someone asks “does it already scale like SGD?”, show `spiral` and `iris`.
 - `make_moons`, `spiral`, and vendored `iris.csv` are supported.
 - The model path now supports both the original single-hidden-layer toy MLP and deeper configurations such as `2-24-24-3` or `4-16-16-3`.
 - Multi-layer runs now apply a small symmetry-breaking initial jitter by default so single-weight observation does not get stuck in a perfectly flat zero-signal state.
+- Multi-layer runs now also resolve to a sharper default observation temperature unless the user sets one explicitly, which keeps deeper-model posteriors from staying as flat as the original single-layer default.
 - The trainer already supports observation, single-weight collapse, propagation, rollback-aware backtracking, and hybrid-scored forced commits.
 - `make_moons` runs can save:
   - an overview plot with `initial shadow / final shadow / final hard`

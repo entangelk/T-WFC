@@ -2,6 +2,7 @@
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-03-16 | Re-verified README comparison claims and refreshed the checked-in public comparison media | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
 | 2026-03-16 | Refreshed the public README files and sample seed report for inline highlight previews | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
 | 2026-03-16 | Embedded inline best/worst preview images inside seed Markdown reports | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
 | 2026-03-16 | Sharpened the auto observation temperature used on multi-layer T-WFC runs | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |

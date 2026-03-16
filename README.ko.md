@@ -122,7 +122,7 @@ GIF가 “한 번의 run에서 무슨 일이 일어났는가?”를 보여준다
   <tr>
     <td valign="top">
       <strong>발표용으로 가장 좋은 케이스: make_moons</strong><br>
-      T-WFC hard test accuracy는 <code>0.950</code>, SGD는 <code>0.975</code>까지 갑니다. gap이 작고 collapse 과정도 읽기 쉬워서 가장 눈에 잘 들어옵니다.
+      T-WFC hard test accuracy는 <code>0.925</code>, SGD는 <code>0.975</code>까지 갑니다. 여전히 gap이 비교적 작고 collapse 과정도 읽기 쉬워서 가장 눈에 잘 들어옵니다.
     </td>
     <td valign="top">
       <strong>확장 한계를 보여주는 케이스: spiral</strong><br>
@@ -134,7 +134,7 @@ GIF가 “한 번의 run에서 무슨 일이 일어났는가?”를 보여준다
 <p align="center">
   <img src="./docs/media/iris_twfc_vs_sgd_metrics.png" alt="T-WFC vs SGD metrics on iris" width="920">
 </p>
-<p align="center"><sub><code>iris</code>는 metric gap을 가장 깔끔하게 보여줍니다. T-WFC shadow test accuracy는 <code>0.833</code>, hard test accuracy는 <code>0.639</code>, SGD는 <code>0.944</code>입니다.</sub></p>
+<p align="center"><sub><code>iris</code>는 metric gap을 가장 깔끔하게 보여줍니다. T-WFC shadow test accuracy는 <code>0.750</code>, hard test accuracy는 <code>0.556</code>, SGD는 <code>0.944</code>입니다.</sub></p>
 
 누군가 “T-WFC가 흥미로운 일을 하긴 하나?”라고 물으면 `make_moons` GIF를 보여주면 됩니다.
 
@@ -145,6 +145,7 @@ GIF가 “한 번의 run에서 무슨 일이 일어났는가?”를 보여준다
 - `make_moons`, `spiral`, vendored `iris.csv`를 지원합니다.
 - 모델 경로는 기존 단일 hidden layer toy MLP뿐 아니라 `2-24-24-3`, `4-16-16-3` 같은 다층 구성도 지원합니다.
 - 다층 run에서는 single-weight observation이 완전히 평평한 zero-signal 상태에 갇히지 않도록 작은 symmetry-breaking initial jitter가 기본 적용됩니다.
+- 다층 run에서는 사용자가 별도 지정하지 않을 때 더 날카로운 기본 observation temperature도 함께 적용되어, deeper model posterior가 예전 single-layer 기본값처럼 너무 평평하게 남지 않도록 합니다.
 - trainer에는 관측, 단일 weight 붕괴, 전파, rollback-aware backtracking, hybrid score 기반 forced commit이 들어가 있습니다.
 - `make_moons` 실행은 다음 시각화를 저장할 수 있습니다.
   - `initial shadow / final shadow / final hard` 3패널 overview plot
