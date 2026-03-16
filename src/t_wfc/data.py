@@ -14,6 +14,8 @@ class DatasetSplit:
     y_train: np.ndarray
     x_test: np.ndarray
     y_test: np.ndarray
+    name: str = "unknown"
+    seed: int | None = None
 
 
 def load_dataset(name: str, **kwargs: float | int | str | Path) -> DatasetSplit:
@@ -85,7 +87,7 @@ def make_moons_dataset(
     test_x = features[-test_count:]
     test_y = labels[-test_count:]
 
-    return _standardize_split(train_x, train_y, test_x, test_y)
+    return _standardize_split(train_x, train_y, test_x, test_y, name="make_moons", seed=seed)
 
 
 def load_iris_dataset(
@@ -122,7 +124,7 @@ def load_iris_dataset(
     test_x = features[test_indices]
     test_y = labels[test_indices]
 
-    return _standardize_split(train_x, train_y, test_x, test_y)
+    return _standardize_split(train_x, train_y, test_x, test_y, name="iris", seed=seed)
 
 
 def make_spiral_dataset(
@@ -172,7 +174,7 @@ def make_spiral_dataset(
     test_x = features[test_indices]
     test_y = labels[test_indices]
 
-    return _standardize_split(train_x, train_y, test_x, test_y)
+    return _standardize_split(train_x, train_y, test_x, test_y, name="spiral", seed=seed)
 
 
 def _stratified_split_indices(
@@ -201,6 +203,9 @@ def _standardize_split(
     train_y: np.ndarray,
     test_x: np.ndarray,
     test_y: np.ndarray,
+    *,
+    name: str,
+    seed: int,
 ) -> DatasetSplit:
     mean = train_x.mean(axis=0, keepdims=True)
     std = train_x.std(axis=0, keepdims=True)
@@ -214,4 +219,6 @@ def _standardize_split(
         y_train=train_y,
         x_test=test_x.astype(np.float64),
         y_test=test_y,
+        name=name,
+        seed=seed,
     )

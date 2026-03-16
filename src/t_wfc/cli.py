@@ -34,11 +34,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--observation-budget", type=int, default=8, help="How many unresolved weights to observe per step.")
     parser.add_argument("--propagation-budget", type=int, default=6, help="How many neighboring weights to update after each collapse.")
     parser.add_argument("--max-steps", type=int, default=0, help="How many collapse steps to run. Use 0 for a full collapse.")
-    parser.add_argument("--temperature", type=float, default=0.18, help="Softmax temperature used to turn losses into pseudo-probabilities.")
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=-1.0,
+        help="Softmax temperature used to turn losses into pseudo-probabilities. Use a negative value to select a model-specific default.",
+    )
     parser.add_argument("--backtrack-tolerance", type=float, default=0.03, help="Allowed loss increase before trying an alternate collapse value.")
     parser.add_argument("--hard-loss-weight", type=float, default=0.35, help="Weight applied to hard-state loss when ranking forced-commit candidates.")
     parser.add_argument("--hard-gap-weight", type=float, default=0.2, help="Extra penalty for cases where hard-state loss is worse than shadow loss.")
     parser.add_argument("--rollback-depth", type=int, default=2, help="How many committed collapse steps to rewind when rollback is triggered.")
+    parser.add_argument("--rollback-depth-growth", type=int, default=0, help="How many extra committed steps to rewind for each repeated rollback at the same frontier.")
+    parser.add_argument("--rollback-ban-count", type=int, default=1, help="How many reverted decisions to ban after a rollback. The oldest reverted choices are banned first.")
     parser.add_argument("--max-frontier-rollbacks", type=int, default=3, help="How many rollbacks to allow at the same search frontier before force-committing the best available collapse.")
     parser.add_argument("--max-attempt-multiplier", type=int, default=8, help="Safety multiplier that caps total collapse attempts when rollbacks happen.")
     parser.add_argument("--seed", type=int, default=7, help="Random seed for dataset generation and observation sampling.")
@@ -95,6 +102,8 @@ def main() -> None:
         hard_loss_weight=args.hard_loss_weight,
         hard_gap_weight=args.hard_gap_weight,
         rollback_depth=args.rollback_depth,
+        rollback_depth_growth=args.rollback_depth_growth,
+        rollback_ban_count=args.rollback_ban_count,
         max_frontier_rollbacks=args.max_frontier_rollbacks,
         max_attempt_multiplier=args.max_attempt_multiplier,
         seed=args.seed,
@@ -443,6 +452,8 @@ def _run_seed_batch_mode(args, seed_list: tuple[int, ...], config: TWFCConfig) -
                 "max_steps": "full" if args.max_steps == 0 else args.max_steps,
                 "backtrack_tolerance": args.backtrack_tolerance,
                 "rollback_depth": args.rollback_depth,
+                "rollback_depth_growth": args.rollback_depth_growth,
+                "rollback_ban_count": args.rollback_ban_count,
                 "max_frontier_rollbacks": args.max_frontier_rollbacks,
                 "max_attempt_multiplier": args.max_attempt_multiplier,
             },

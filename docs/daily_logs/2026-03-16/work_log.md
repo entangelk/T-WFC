@@ -1,0 +1,161 @@
+# Work Log - 2026-03-16
+
+## Goal
+
+- Make seed-sweep Markdown reports explain `shadow` vs `hard` quality gaps directly, instead of only surfacing search-pressure counters.
+- Generalize rollback beyond a fixed-depth rewind and single banned choice without breaking the existing toy runs.
+- Add richer experiment metadata and snapshot logging so later tuning work has better observability.
+- Probe hybrid forced-commit score weights carefully before changing defaults.
+- Tune the next deeper-model default only if it improves `hard_weights` behavior without disturbing the single-layer baseline.
+- Promote the seed-report experience to a README-worthy state once highlighted runs can be understood without extra click-through.
+
+## Completed Work
+
+- Updated `src/t_wfc/reporting.py`.
+  - added batch-level `shadow` and `hard` test metric aggregation for accuracy/loss gap analysis
+  - added a `Shadow vs Hard Divergence` section with batch-wide gap summaries and seed callouts
+  - added signed gap columns to the seed table: `Acc Gap (S-H)` and `Loss Gap (H-S)`
+  - added per-seed divergence summaries inside both best/worst highlights and seed drilldowns
+- Expanded `tests/test_smoke.py`.
+  - added smoke assertions that Markdown reports include the new divergence section, gap columns, and per-seed divergence text
+  - kept coverage on both regular seed reports and rollback-heavy stress reports
+- Updated `HANDOFF.md`.
+  - recorded the new reporting capability in `Current State`
+  - removed the completed divergence-summary task from `Next Tasks`
+  - refreshed the `src/t_wfc/reporting.py` description in `Project Structure`
+- Updated `CHANGELOG.md` with a new 2026-03-16 entry for the reporting change.
+- Updated `src/t_wfc/trainer.py`.
+  - added configurable `rollback_depth_growth` so repeated rollback pressure at the same frontier can rewind deeper than the base depth
+  - added configurable `rollback_ban_count` so a rollback can ban more than one reverted decision instead of only the anchor choice
+  - kept the default settings aligned with the previous fixed-depth, single-ban behavior to reduce regression risk
+- Updated `src/t_wfc/cli.py`.
+  - exposed `--rollback-depth-growth` and `--rollback-ban-count`
+  - included the new rollback knobs in seed-report configuration summaries
+- Expanded `tests/test_smoke.py` again.
+  - added deterministic helper-level tests for adaptive rollback depth resolution
+  - added deterministic rollback-state tests that verify default single-ban behavior and the new multi-ban path
+  - added an end-to-end rollback stress test that checks multi-weight ban accumulation under the generalized settings
+- Updated `docs/CONCEPT.md` and `docs/CONCEPT.en.md`.
+  - documented that rollback can now widen its rewind depth under repeated frontier pressure
+  - documented that rollback can temporarily ban more than one reverted choice
+- Updated `HANDOFF.md`.
+  - recorded the adaptive rollback and multi-ban capability in `Current State`
+  - removed the completed rollback-generalization task from `Next Tasks`
+  - added a follow-up tuning task for the new rollback knobs
+- Updated `CHANGELOG.md` with a second 2026-03-16 entry for rollback generalization.
+- Updated `src/t_wfc/data.py`.
+  - added dataset name and seed metadata to `DatasetSplit`
+- Updated `src/t_wfc/trainer.py` again.
+  - added `ExperimentContext` so each run now keeps dataset/model metadata such as dataset name, seed, sample counts, feature dim, class count, architecture label, layer dims, parameter count, and domain size
+  - added explicit snapshot `event_tags` so rollback, forced-commit, ban-growth, and frontier-pressure events are stored directly instead of only being inferred later
+  - added `collapsed_mask` and full `distribution_snapshot` copies to each snapshot for post-run distribution inspection
+- Expanded `tests/test_smoke.py` again.
+  - added assertions that `make_moons`, `iris`, and `spiral` runs populate experiment context correctly
+  - added assertions that rollback-heavy runs populate explicit snapshot event tags and distribution snapshots
+- Updated `HANDOFF.md`.
+  - recorded the richer experiment logging capability in `Current State`
+  - removed the completed richer-logging task from `Next Tasks`
+- Updated `CHANGELOG.md` with a third 2026-03-16 entry for the logging change.
+- Ran hybrid-score tuning sweeps without changing defaults yet.
+  - `make_moons` rollback stress sweeps showed that stronger hard penalties could shrink `shadow-hard` gaps a bit without improving forced-commit counts
+  - `iris` rollback stress sweeps showed the same stronger penalties were not robust across seeds and could regress hard accuracy/loss
+- Updated `HANDOFF.md` again.
+  - recorded that the current hybrid-score defaults still look like the safest cross-dataset baseline so far
+- Updated `src/t_wfc/trainer.py`.
+  - changed `temperature` from a fixed default into a requested value that resolves inside the trainer
+  - kept single-hidden-layer runs on the old `0.18` observation temperature
+  - resolved multi-layer runs to a sharper `0.12` observation temperature only when the user leaves the setting on auto
+- Updated `src/t_wfc/cli.py`.
+  - changed `--temperature` so a negative value means "use the model-specific default"
+  - preserved explicit CLI temperatures instead of silently overriding them for deeper models
+- Expanded `tests/test_smoke.py` again.
+  - added resolver-level tests for single-layer and multi-layer observation temperature defaults
+  - added an end-to-end check that a multi-layer auto-temperature run matches the same run with an explicit `0.12`
+  - tightened the multi-layer spiral smoke test so `hard` test accuracy must at least improve over the initial shadow baseline
+- Updated `docs/CONCEPT.md` and `docs/CONCEPT.en.md` again.
+  - documented the new multi-layer observation-temperature default
+- Updated `HANDOFF.md` once more.
+  - recorded the multi-layer temperature refinement in `Current State`
+  - narrowed the remaining deeper-model task wording to ongoing tuning rather than a blank-slate gap
+- Updated `CHANGELOG.md` with a new 2026-03-16 entry for the deeper-model temperature change.
+- Updated `src/t_wfc/reporting.py` again.
+  - embedded inline storyboard previews for best/worst seeds when 2D storyboard artifacts exist
+  - embedded inline metrics previews for best/worst seeds whenever seed artifacts are available
+  - kept seed tables and drill-down links unchanged so the report structure stays familiar
+- Expanded `tests/test_smoke.py` again.
+  - added assertions that best/worst preview images are embedded when artifact bundles are present
+  - added assertions that preview markup stays absent when a report is generated without artifact bundles
+- Updated `HANDOFF.md`.
+  - recorded the new report-preview capability in `Current State`
+  - removed the completed preview-embedding task from `Next Tasks`
+- Updated `CHANGELOG.md` with a new 2026-03-16 entry for the inline report-preview change.
+- Updated `README.md` and `README.ko.md`.
+  - explained that multi-seed reports now embed inline best/worst preview images
+  - refreshed the repository map wording for `src/t_wfc/reporting.py`
+- Regenerated `docs/media/make_moons_seed_report.md`.
+  - refreshed the checked-in public sample report so the linked example now shows the new inline best/worst previews
+
+## Technical Decisions
+
+- Kept the new report summaries on test metrics only so the report stays aligned with the existing final-comparison story.
+- Treated this as a reporting-only change; collapse policy, rollback behavior, and hybrid scoring were left untouched.
+- Used explicit signed gap conventions and documented them in the report notes:
+  - `Acc Gap (S-H)` = `shadow test accuracy - hard test accuracy`
+  - `Loss Gap (H-S)` = `hard test loss - shadow test loss`
+- Kept rollback generalization opt-in by default:
+  - `rollback_depth_growth=0` preserves fixed-depth rewinds
+  - `rollback_ban_count=1` preserves the original single banned choice
+- Kept multi-ban selection simple and deterministic by banning the oldest reverted decisions first.
+- Did not add a new dataset at this stage because existing `make_moons` rollback stress plus the current `iris`/`spiral` smoke coverage was enough to verify the new control path.
+- Kept richer logging inside the in-memory experiment result instead of adding a new file export format, so the change stays surgical and existing CLI/report flows remain unchanged.
+- Chose not to change the hybrid-score defaults yet because the small stress sweeps produced conflicting results across datasets:
+  - `make_moons` stress slightly favored stronger hard penalties
+  - `iris` stress favored the current defaults overall
+- Kept the deeper-model tuning change deliberately narrower than a hybrid-collapse rewrite:
+  - single-layer runs still resolve to the old `0.18` observation temperature
+  - multi-layer runs resolve to `0.12` only when temperature stays on auto
+  - explicit user temperatures still win
+- Kept the new report preview feature scoped to the highlight section only:
+  - best/worst sections get inline images because they are the report's highest-signal summary blocks
+  - full seed drilldowns remain link-based so large seed sweeps do not turn into image-heavy walls
+
+## Verification
+
+- `python3 -m py_compile src/t_wfc/*.py tests/test_smoke.py`
+  - Result: passed
+- `PYTHONPATH=src python3 -m unittest discover -s tests`
+  - Result: passed (`Ran 23 tests in 21.169s`)
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 4 --backtrack-tolerance -10 --rollback-depth 1 --rollback-depth-growth 1 --rollback-ban-count 2 --max-frontier-rollbacks 2 --max-attempt-multiplier 16 --show-steps 4`
+  - Result: passed
+  - Summary: contradiction-heavy run finished at `4/32` collapsed weights with `24` rollbacks and `32` forced commits; the new rollback knobs remained stable under an intentionally harsh setting
+- `PYTHONPATH=src python3 - <<'PY' ... run_seed_batch('make_moons', seeds=(7,11,17,23,31), hard_loss_weight/hard_gap_weight sweep under rollback stress) ... PY`
+  - Result: passed
+  - Summary: stronger hard penalties reduced the mean `shadow-hard` accuracy gap from about `+0.053` to about `+0.040` on the stress batch, but did not reduce forced commits
+- `PYTHONPATH=src python3 - <<'PY' ... run_seed_batch('iris', seeds=(7,13), hard_loss_weight/hard_gap_weight sweep under rollback stress) ... PY`
+  - Result: passed
+  - Summary: stronger hard penalties were not stable across `iris` stress seeds
+- `PYTHONPATH=src python3 - <<'PY' ... run_seed_batch('iris', seeds=(7,13,29), hard_loss_weight/hard_gap_weight sweep under rollback stress) ... PY`
+  - Result: passed
+  - Summary: the current defaults stayed best on mean hard test accuracy (`0.870`) across the tested `iris` stress seeds; stronger hard-penalty candidates regressed to roughly `0.806`-`0.852`
+- `python3 -m py_compile src/t_wfc/*.py tests/test_smoke.py`
+  - Result: passed
+- `PYTHONPATH=src python3 -m unittest discover -s tests`
+  - Result: passed (`Ran 26 tests in 17.729s`)
+- `PYTHONPATH=src python3 - <<'PY' ... single-layer and deeper-model temperature comparison (baseline 0.18 vs auto resolver) ... PY`
+  - Result: passed
+  - Summary: the single-layer `make_moons` control run was identical under auto and explicit `0.18`; on the tested deeper seeds, auto `0.12` improved or matched `hard` behavior in `iris` and one `spiral` seed without introducing a new regression in the checked sample
+- `python3 -m py_compile src/t_wfc/*.py tests/test_smoke.py`
+  - Result: passed
+- `PYTHONPATH=src python3 -m unittest discover -s tests`
+  - Result: passed (`Ran 26 tests in 18.704s`)
+- `PYTHONPATH=src python3 -m t_wfc.cli --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-gallery docs/media/make_moons_seed_gallery.png --gallery-columns 3 --save-seed-artifacts-dir docs/media/make_moons_seed_runs --save-md-report docs/media/make_moons_seed_report.md --report-title "T-WFC make_moons Seed Sweep"`
+  - Result: passed
+  - Summary: regenerated the public sample seed report and seed artifact bundle; the checked-in report now renders best/worst storyboard and metrics previews inline
+
+## Next Steps
+
+- Tune hybrid score weights so `shadow` and `hard` quality stay balanced across more seeds.
+- Continue deeper-model tuning beyond the new auto-temperature default, especially where `hard_weights` still trail on some multi-layer `iris` and `spiral` seeds.
+- Expand hybrid-score sweeps carefully before changing defaults, especially on `iris` stress seeds where stronger hard penalties looked unstable and the current defaults remained strongest overall.
+- Tune adaptive rollback depth growth and multi-ban settings so contradiction-heavy runs rely less on forced commits.
+- Decide whether collapse should stay `shadow`-driven or move to a more explicit hybrid decision rule.

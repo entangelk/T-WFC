@@ -101,7 +101,7 @@ Historical note: before the frontier-based forced-commit fallback, this stress s
 </p>
 <p align="center"><sub>Seed sweep on <code>make_moons</code>: stable seeds, weaker seeds, and search-pressure summaries can be compared side by side.</sub></p>
 
-The gallery is meant to answer a different question from the GIFs: not “what happened in one run?” but “how much does behavior move when only the seed changes?” Example generated report: [docs/media/make_moons_seed_report.md](./docs/media/make_moons_seed_report.md).
+The gallery is meant to answer a different question from the GIFs: not “what happened in one run?” but “how much does behavior move when only the seed changes?” The generated Markdown report now embeds inline storyboard and metrics previews for the best and worst seeds so the first read does not require extra click-through. Example: [docs/media/make_moons_seed_report.md](./docs/media/make_moons_seed_report.md).
 
 ## T-WFC vs SGD
 
@@ -156,7 +156,7 @@ If someone asks “does it already scale like SGD?”, show `spiral` and `iris`.
   - forbidden-value bans and frontier pressure are also rendered as separate overlay signals
   - ban overlays now identify which weights accumulated bans, not only how many bans existed
 - Any dataset run can save a metrics timeline plot for shadow/hard loss and accuracy.
-- Multi-seed runs can save a comparison gallery, per-seed drill-down artifacts, and a Markdown report with best/worst seed highlights, peak-ban summaries, and direct links to each seed's metrics/storyboard/GIF outputs.
+- Multi-seed runs can save a comparison gallery, per-seed drill-down artifacts, and a Markdown report with best/worst seed highlights, inline preview images, peak-ban summaries, and direct links to each seed's metrics/storyboard/GIF outputs.
 - The CLI can now run a `numpy` SGD baseline on the same MLP so T-WFC runs can be compared against a conventional optimizer path.
 - 2D runs can now save a `T-WFC vs SGD` boundary board and comparison GIF, while any dataset can save a `T-WFC vs SGD` metrics board.
 - The package now exposes an installable `t-wfc` CLI via `pyproject.toml`.
@@ -193,7 +193,7 @@ t-wfc --dataset make_moons --max-steps 8 --seed-list 7,11,17,23,31 --save-seed-g
 - `src/t_wfc/state.py`: discrete probability state
 - `src/t_wfc/trainer.py`: collapse loop, rollback logic, metrics, snapshots
 - `src/t_wfc/batch.py`: repeated experiment runs across seed lists and per-seed artifact export
-- `src/t_wfc/reporting.py`: Markdown seed-sweep report generation with drill-down links
+- `src/t_wfc/reporting.py`: Markdown seed-sweep report generation with inline highlight previews and drill-down links
 - `src/t_wfc/visualization.py`: overview, progress, metrics, storyboard, GIF, seed-gallery, and `T-WFC vs SGD` comparison plots
 - `src/t_wfc/cli.py`: command-line entry point
 - `docs/media/`: curated public showcase media used directly in this README

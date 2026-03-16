@@ -2,6 +2,12 @@
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-03-16 | Refreshed the public README files and sample seed report for inline highlight previews | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
+| 2026-03-16 | Embedded inline best/worst preview images inside seed Markdown reports | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
+| 2026-03-16 | Sharpened the auto observation temperature used on multi-layer T-WFC runs | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
+| 2026-03-16 | Added richer experiment metadata and snapshot logging for tuning work | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
+| 2026-03-16 | Generalized rollback with adaptive depth growth and multi-ban support | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
+| 2026-03-16 | Added shadow-vs-hard divergence summaries to Markdown seed reports | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
 | 2026-03-15 | Initial runnable T-WFC prototype scaffold added | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
 | 2026-03-15 | Added Iris dataset path and shadow-vs-hard metric reporting | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |
 | 2026-03-15 | Added rollback-aware backtracking to the T-WFC loop | [work_log.md](./docs/daily_logs/2026-03-15/work_log.md) |

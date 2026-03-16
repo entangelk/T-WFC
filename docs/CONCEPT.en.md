@@ -58,6 +58,7 @@ The procedural map-generation logic of WFC is mapped onto neural-network weights
 * For each unresolved weight, force it to each candidate value and measure the minibatch loss.
 * Convert those losses into Shannon entropy. If one candidate clearly dominates, entropy becomes low.
 * The current prototype also records both `shadow_weights` (expectation-based) and `hard_weights` (argmax-based) so partially collapsed states can be compared directly.
+* Current prototype refinement: on multi-layer MLPs, if the user does not set a temperature explicitly, observation uses a slightly sharper default temperature so deeper runs are less likely to stay stuck in overly flat posteriors.
 
 ### Step 3: Collapse
 
@@ -74,7 +75,8 @@ The procedural map-generation logic of WFC is mapped onto neural-network weights
 
 * **Contradictions:** A bad collapse path can lead to a dead end where loss no longer improves.
 * **Mitigation:** Introduce backtracking that rewinds recent collapse steps when the loss moves outside an allowed range.
-* **Current prototype implementation:** when only unacceptable collapses remain, it rewinds a fixed number of recent steps and temporarily bans the oldest reverted choice.
+* **Current prototype implementation:** when only unacceptable collapses remain, it rewinds recent steps and temporarily bans one or more reverted choices starting from the oldest reverted decision.
+* **Current prototype generalization:** if rollback keeps repeating at the same frontier, the rewind depth can grow instead of staying fixed.
 * **Current prototype safeguard:** when rollback keeps repeating at the same frontier, a forced-commit safety valve prevents zero-progress oscillation.
 * **Current prototype safeguard 2:** forced commits do not just take a local fallback for the current observation; they search unresolved weights globally and choose the best collapse under a hybrid `shadow loss + hard loss + gap penalty` score.
 

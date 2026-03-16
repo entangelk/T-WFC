@@ -8,6 +8,10 @@ from .data import DatasetSplit
 from .model import ToyMLP
 from .state import StateSnapshot, WeightState
 
+AUTO_TEMPERATURE = -1.0
+DEFAULT_OBSERVATION_TEMPERATURE = 0.18
+MULTILAYER_OBSERVATION_TEMPERATURE = 0.12
+
 
 @dataclass(frozen=True)
 class TWFCConfig:
@@ -16,12 +20,14 @@ class TWFCConfig:
     observation_budget: int = 8
     propagation_budget: int = 6
     max_steps: int | None = None
-    temperature: float = 0.18
+    temperature: float = AUTO_TEMPERATURE
     propagation_blend: float = 0.6
     backtrack_tolerance: float = 0.03
     hard_loss_weight: float = 0.35
     hard_gap_weight: float = 0.2
     rollback_depth: int = 2
+    rollback_depth_growth: int = 0
+    rollback_ban_count: int = 1
     max_frontier_rollbacks: int = 3
     max_attempt_multiplier: int = 8
     seed: int = 7
@@ -68,6 +74,20 @@ class EvaluationMetrics:
 
 
 @dataclass(frozen=True)
+class ExperimentContext:
+    dataset_name: str
+    dataset_seed: int | None
+    train_samples: int
+    test_samples: int
+    feature_dim: int
+    class_count: int
+    architecture_label: str
+    layer_dims: tuple[int, ...]
+    parameter_count: int
+    domain_size: int
+
+
+@dataclass(frozen=True)
 class ForbiddenWeightState:
     weight_index: int
     parameter_name: str
@@ -91,6 +111,9 @@ class ExperimentSnapshot:
     forbidden_value_delta: int
     forbidden_entries: tuple[ForbiddenWeightState, ...]
     forbidden_delta_labels: tuple[str, ...]
+    event_tags: tuple[str, ...]
+    collapsed_mask: np.ndarray
+    distribution_snapshot: np.ndarray
     shadow_weights: np.ndarray
     hard_weights: np.ndarray
     shadow_metrics: EvaluationMetrics
@@ -106,6 +129,7 @@ class DecisionRecord:
 
 @dataclass(frozen=True)
 class ExperimentResult:
+    context: ExperimentContext
     initial_shadow_weights: np.ndarray
     initial_shadow_metrics: EvaluationMetrics
     final_shadow_metrics: EvaluationMetrics
@@ -126,6 +150,7 @@ class TWFCTrainer:
         self.model = model
         self.config = config
         self.domain = np.asarray(config.domain, dtype=np.float64)
+        self.temperature = self._resolve_temperature()
         self.rng = np.random.default_rng(config.seed)
         self.neighbor_map = self._build_neighbor_map()
 
@@ -238,12 +263,30 @@ class TWFCTrainer:
                 step_logs=step_logs,
                 progress_snapshots=progress_snapshots,
                 forbidden_values=forbidden_values,
+                frontier_pressure=frontier_rollbacks[frontier],
+            )
+            self._trim_frontier_rollbacks(
+                frontier_rollbacks,
+                current_frontier=len(history),
+                previous_frontier=frontier,
             )
 
         final_shadow = state.expected_vector()
         final_hard = state.argmax_vector()
 
         return ExperimentResult(
+            context=ExperimentContext(
+                dataset_name=dataset.name,
+                dataset_seed=dataset.seed,
+                train_samples=int(dataset.x_train.shape[0]),
+                test_samples=int(dataset.x_test.shape[0]),
+                feature_dim=int(dataset.x_train.shape[1]),
+                class_count=int(max(dataset.y_train.max(), dataset.y_test.max()) + 1),
+                architecture_label=self.model.architecture_label,
+                layer_dims=tuple(int(width) for width in self.model.layer_dims),
+                parameter_count=self.model.parameter_count,
+                domain_size=int(self.domain.size),
+            ),
             initial_shadow_weights=initial_shadow,
             initial_shadow_metrics=initial_shadow_metrics,
             final_shadow_metrics=self._evaluate(final_shadow, dataset),
@@ -302,6 +345,15 @@ class TWFCTrainer:
                 forbidden_entries,
                 previous.forbidden_entries if previous is not None else (),
             ),
+            event_tags=self._snapshot_event_tags(
+                rollback_delta=rollback_count - (previous.rollback_count if previous is not None else 0),
+                backtrack_delta=backtrack_count - (previous.backtrack_count if previous is not None else 0),
+                forced_commit_delta=forced_commit_count - (previous.forced_commit_count if previous is not None else 0),
+                forbidden_value_delta=forbidden_value_count - (previous.forbidden_value_count if previous is not None else 0),
+                frontier_pressure=frontier_pressure,
+            ),
+            collapsed_mask=state.collapsed.copy(),
+            distribution_snapshot=state.probabilities.copy(),
             shadow_weights=shadow_weights,
             hard_weights=hard_weights,
             shadow_metrics=self._evaluate(shadow_weights, dataset),
@@ -552,15 +604,56 @@ class TWFCTrainer:
         step_logs: list[CollapseStep],
         progress_snapshots: list[ExperimentSnapshot],
         forbidden_values: dict[int, set[int]],
+        frontier_pressure: int,
     ) -> None:
-        rollback_depth = min(max(self.config.rollback_depth, 1), len(history))
-        rollback_target = history[-rollback_depth]
+        rollback_depth = self._resolve_rollback_depth(
+            history_length=len(history),
+            frontier_pressure=frontier_pressure,
+        )
+        rollback_window = history[-rollback_depth:]
+        rollback_target = rollback_window[0]
         state.restore(rollback_target.snapshot_before)
-        forbidden_values.setdefault(rollback_target.weight_index, set()).add(rollback_target.chosen_value_index)
+        for ban_record in self._select_rollback_ban_records(rollback_window):
+            forbidden_values.setdefault(ban_record.weight_index, set()).add(ban_record.chosen_value_index)
 
         del history[-rollback_depth:]
         del step_logs[-rollback_depth:]
         del progress_snapshots[-rollback_depth:]
+
+    def _resolve_rollback_depth(
+        self,
+        *,
+        history_length: int,
+        frontier_pressure: int,
+    ) -> int:
+        if history_length <= 0:
+            return 0
+
+        base_depth = max(self.config.rollback_depth, 1)
+        depth_growth = max(self.config.rollback_depth_growth, 0)
+        extra_depth = depth_growth * max(frontier_pressure - 1, 0)
+        return min(base_depth + extra_depth, history_length)
+
+    def _select_rollback_ban_records(
+        self,
+        rollback_window: list[DecisionRecord] | tuple[DecisionRecord, ...],
+    ) -> tuple[DecisionRecord, ...]:
+        if not rollback_window:
+            return ()
+
+        ban_count = max(self.config.rollback_ban_count, 1)
+        return tuple(rollback_window[: min(ban_count, len(rollback_window))])
+
+    def _trim_frontier_rollbacks(
+        self,
+        frontier_rollbacks: dict[int, int],
+        *,
+        current_frontier: int,
+        previous_frontier: int,
+    ) -> None:
+        for frontier in tuple(frontier_rollbacks):
+            if current_frontier < frontier < previous_frontier:
+                del frontier_rollbacks[frontier]
 
     def _allowed_value_indices(
         self,
@@ -661,13 +754,41 @@ class TWFCTrainer:
         changes.sort(key=lambda item: (-item[0], item[1]))
         return tuple(label for _, _, label in changes[:3])
 
+    def _snapshot_event_tags(
+        self,
+        *,
+        rollback_delta: int,
+        backtrack_delta: int,
+        forced_commit_delta: int,
+        forbidden_value_delta: int,
+        frontier_pressure: int,
+    ) -> tuple[str, ...]:
+        tags: list[str] = []
+        if rollback_delta > 0:
+            tags.append("rollback")
+        if backtrack_delta > 0:
+            tags.append("alt")
+        if forced_commit_delta > 0:
+            tags.append("forced")
+        if forbidden_value_delta > 0:
+            tags.append("ban_growth")
+        if frontier_pressure > 0:
+            tags.append("frontier_pressure")
+        return tuple(tags)
+
+    def _resolve_temperature(self) -> float:
+        if self.config.temperature >= 0.0:
+            return max(self.config.temperature, 1e-6)
+        if len(self.model.config.resolved_hidden_layers) > 1:
+            return MULTILAYER_OBSERVATION_TEMPERATURE
+        return DEFAULT_OBSERVATION_TEMPERATURE
+
     def _loss_to_distribution(self, losses: np.ndarray) -> np.ndarray:
         finite_mask = np.isfinite(losses)
         if not finite_mask.any():
             return np.full(losses.shape, 1.0 / losses.size, dtype=np.float64)
 
-        temperature = max(self.config.temperature, 1e-6)
-        scaled = -(losses[finite_mask] - losses[finite_mask].min()) / temperature
+        scaled = -(losses[finite_mask] - losses[finite_mask].min()) / self.temperature
         scaled -= scaled.max()
 
         finite_weights = np.exp(scaled)

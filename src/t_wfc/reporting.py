@@ -26,8 +26,18 @@ def save_seed_markdown_report(
 
     dataset_name = experiments[0].dataset_name
     model = experiments[0].model
+    shadow_test_accuracy = np.array(
+        [experiment.result.final_shadow_metrics.test_accuracy for experiment in experiments],
+        dtype=np.float64,
+    )
     hard_test_accuracy = np.array([experiment.result.final_hard_metrics.test_accuracy for experiment in experiments], dtype=np.float64)
+    shadow_test_loss = np.array(
+        [experiment.result.final_shadow_metrics.test_loss for experiment in experiments],
+        dtype=np.float64,
+    )
     hard_test_loss = np.array([experiment.result.final_hard_metrics.test_loss for experiment in experiments], dtype=np.float64)
+    accuracy_gaps = shadow_test_accuracy - hard_test_accuracy
+    loss_gaps = hard_test_loss - shadow_test_loss
     rollback_counts = np.array([experiment.result.rollback_count for experiment in experiments], dtype=np.int64)
     forced_commit_counts = np.array([experiment.result.forced_commit_count for experiment in experiments], dtype=np.int64)
     max_forbidden_counts = np.array(
@@ -68,9 +78,13 @@ def save_seed_markdown_report(
         lines.append("")
     lines.append("## Aggregate Summary")
     lines.append("")
+    lines.append(f"- Mean shadow test accuracy: `{shadow_test_accuracy.mean():.3f}`")
     lines.append(f"- Mean hard test accuracy: `{hard_test_accuracy.mean():.3f}`")
     lines.append(f"- Std hard test accuracy: `{hard_test_accuracy.std():.3f}`")
+    lines.append(f"- Mean shadow-hard test accuracy gap: `{accuracy_gaps.mean():+.3f}`")
+    lines.append(f"- Mean shadow test loss: `{shadow_test_loss.mean():.4f}`")
     lines.append(f"- Mean hard test loss: `{hard_test_loss.mean():.4f}`")
+    lines.append(f"- Mean hard-shadow test loss gap: `{loss_gaps.mean():+.4f}`")
     lines.append(f"- Mean rollback count: `{rollback_counts.mean():.2f}`")
     lines.append(f"- Mean forced-commit count: `{forced_commit_counts.mean():.2f}`")
     lines.append(f"- Max active forbidden values: `{int(max_forbidden_counts.max())}`")
@@ -84,6 +98,13 @@ def save_seed_markdown_report(
         f"(hard test acc `{hard_test_accuracy[worst_index]:.3f}`)"
     )
     lines.append("")
+    lines.extend(
+        _divergence_sections(
+            experiments=experiments,
+            accuracy_gaps=accuracy_gaps,
+            loss_gaps=loss_gaps,
+        )
+    )
     lines.extend(
         _highlight_sections(
             experiments=experiments,
@@ -109,18 +130,21 @@ def save_seed_markdown_report(
     lines.append("")
     if artifacts_by_seed:
         lines.append(
-            "| Seed | Tag | Collapsed | Shadow Test Acc | Hard Test Acc | Hard Test Loss | Rollbacks | "
-            "Alt Choices | Forced | Max Bans | Max Pressure | Peak Ban Focus | Latest Ban Delta | Metrics | Storyboard | GIF |"
+            "| Seed | Tag | Collapsed | Shadow Test Acc | Hard Test Acc | Acc Gap (S-H) | "
+            "Hard Test Loss | Loss Gap (H-S) | Rollbacks | Alt Choices | Forced | Max Bans | "
+            "Max Pressure | Peak Ban Focus | Latest Ban Delta | Metrics | Storyboard | GIF |"
         )
         lines.append(
-            "|------|-----|-----------|-----------------|---------------|----------------|-----------|-------------|--------|"
-            "----------|--------------|----------------|------------------|---------|------------|-----|"
+            "|------|-----|-----------|-----------------|---------------|---------------|----------------|----------------|"
+            "-----------|-------------|--------|----------|--------------|----------------|------------------|---------|------------|-----|"
         )
     else:
-        lines.append("| Seed | Tag | Collapsed | Shadow Test Acc | Hard Test Acc | Hard Test Loss | Rollbacks | Alt Choices | Forced | Max Bans | Max Pressure | Peak Ban Focus | Latest Ban Delta |")
-        lines.append("|------|-----|-----------|-----------------|---------------|----------------|-----------|-------------|--------|----------|--------------|----------------|------------------|")
+        lines.append("| Seed | Tag | Collapsed | Shadow Test Acc | Hard Test Acc | Acc Gap (S-H) | Hard Test Loss | Loss Gap (H-S) | Rollbacks | Alt Choices | Forced | Max Bans | Max Pressure | Peak Ban Focus | Latest Ban Delta |")
+        lines.append("|------|-----|-----------|-----------------|---------------|---------------|----------------|----------------|-----------|-------------|--------|----------|--------------|----------------|------------------|")
     for experiment in experiments:
         result = experiment.result
+        accuracy_gap = _shadow_hard_accuracy_gap(experiment)
+        loss_gap = _shadow_hard_loss_gap(experiment)
         seed_tag = _seed_tag(experiment=experiment, experiments=experiments, best_index=best_index, worst_index=worst_index)
         row = (
             "| "
@@ -129,7 +153,9 @@ def save_seed_markdown_report(
             f"{result.collapsed_count}/{result.parameter_count} | "
             f"{result.final_shadow_metrics.test_accuracy:.3f} | "
             f"{result.final_hard_metrics.test_accuracy:.3f} | "
+            f"{accuracy_gap:+.3f} | "
             f"{result.final_hard_metrics.test_loss:.4f} | "
+            f"{loss_gap:+.4f} | "
             f"{result.rollback_count} | "
             f"{result.backtrack_count} | "
             f"{result.forced_commit_count} | "
@@ -150,6 +176,8 @@ def save_seed_markdown_report(
     lines.append("")
     lines.append("## Notes")
     lines.append("")
+    lines.append("- `Acc Gap (S-H)` is `shadow test accuracy - hard test accuracy`, so positive values mean shadow stayed ahead.")
+    lines.append("- `Loss Gap (H-S)` is `hard test loss - shadow test loss`, so positive values mean hard stayed worse.")
     lines.append("- `Max Bans` counts the largest number of active forbidden candidate values seen during the run.")
     lines.append("- `Max Pressure` counts the highest rollback pressure observed at a single search frontier before a commit.")
     if artifacts_by_seed:
@@ -168,6 +196,7 @@ def save_seed_markdown_report(
             heading_suffix = f" [{seed_tag}]" if seed_tag != "-" else ""
             lines.append(f"### Seed {experiment.seed}{heading_suffix}")
             lines.append("")
+            lines.append(f"- Shadow vs hard: `{_experiment_divergence_summary(experiment)}`")
             lines.append(f"- Peak Ban Focus: `{_experiment_peak_ban_summary(experiment, include_values=True)}`")
             lines.append(f"- Latest Ban Delta: `{_experiment_latest_ban_delta_summary(experiment, short=False)}`")
             lines.append(f"- Metrics: {_artifact_link(artifact.metrics_plot, output.parent, 'open')}")
@@ -230,6 +259,7 @@ def _highlight_sections(
             f"- Hard test accuracy/loss: `{experiment.result.final_hard_metrics.test_accuracy:.3f}` / "
             f"`{experiment.result.final_hard_metrics.test_loss:.4f}`"
         )
+        sections.append(f"- Shadow vs hard: `{_experiment_divergence_summary(experiment)}`")
         sections.append(
             f"- Search pressure: `rb={experiment.result.rollback_count}` `alt={experiment.result.backtrack_count}` "
             f"`forced={experiment.result.forced_commit_count}` "
@@ -246,8 +276,85 @@ def _highlight_sections(
                 f"{_artifact_link(artifact.storyboard_plot, output_dir, 'storyboard')} | "
                 f"{_artifact_link(artifact.gif_path, output_dir, 'gif')}"
             )
+            sections.extend(
+                _highlight_preview_lines(
+                    title=title,
+                    artifact=artifact,
+                    output_dir=output_dir,
+                )
+            )
         sections.append("")
 
+    return sections
+
+
+def _highlight_preview_lines(
+    *,
+    title: str,
+    artifact: SeedArtifacts,
+    output_dir: Path,
+) -> list[str]:
+    lines: list[str] = []
+    if artifact.storyboard_plot is not None:
+        relative_storyboard = _relative_path(artifact.storyboard_plot, output_dir)
+        lines.append("")
+        lines.append(f"![{title} preview: storyboard]({relative_storyboard})")
+
+    relative_metrics = _relative_path(artifact.metrics_plot, output_dir)
+    lines.append("")
+    lines.append(f"![{title} preview: metrics]({relative_metrics})")
+    return lines
+
+
+def _divergence_sections(
+    *,
+    experiments: tuple[SeedExperiment, ...] | list[SeedExperiment],
+    accuracy_gaps: np.ndarray,
+    loss_gaps: np.ndarray,
+) -> list[str]:
+    sections: list[str] = ["## Shadow vs Hard Divergence", ""]
+    matched_or_exceeded_count = int(np.count_nonzero(accuracy_gaps <= 1e-12))
+    largest_shadow_lead_index = int(accuracy_gaps.argmax())
+    highest_loss_penalty_index = int(loss_gaps.argmax())
+    most_aligned_index = int(np.abs(accuracy_gaps).argmin())
+
+    sections.append(
+        f"- Seeds where hard test accuracy matched or exceeded shadow: "
+        f"`{matched_or_exceeded_count}/{len(experiments)}`"
+    )
+    sections.append(
+        f"- Largest shadow accuracy lead: "
+        f"`{_experiment_accuracy_gap_summary(experiments[largest_shadow_lead_index])}`"
+    )
+    if float(accuracy_gaps.min()) < -1e-12:
+        sections.append(
+            f"- Largest hard accuracy lead: "
+            f"`{_experiment_accuracy_gap_summary(experiments[int(accuracy_gaps.argmin())])}`"
+        )
+    else:
+        sections.append(
+            "- Largest hard accuracy lead: "
+            "`none` (hard never exceeded shadow on test accuracy in this batch)"
+        )
+    sections.append(
+        f"- Largest hard loss penalty: "
+        f"`{_experiment_loss_gap_summary(experiments[highest_loss_penalty_index])}`"
+    )
+    if float(loss_gaps.min()) < -1e-12:
+        sections.append(
+            f"- Largest hard loss gain: "
+            f"`{_experiment_loss_gap_summary(experiments[int(loss_gaps.argmin())])}`"
+        )
+    else:
+        sections.append(
+            "- Largest hard loss gain: "
+            "`none` (hard never beat shadow on test loss in this batch)"
+        )
+    sections.append(
+        f"- Most aligned seed: "
+        f"`{_experiment_divergence_summary(experiments[most_aligned_index])}`"
+    )
+    sections.append("")
     return sections
 
 
@@ -291,6 +398,41 @@ def _ordered_drilldown_experiments(
         seen.add(experiment.seed)
 
     return tuple(priority)
+
+
+def _shadow_hard_accuracy_gap(experiment: SeedExperiment) -> float:
+    return experiment.result.final_shadow_metrics.test_accuracy - experiment.result.final_hard_metrics.test_accuracy
+
+
+def _shadow_hard_loss_gap(experiment: SeedExperiment) -> float:
+    return experiment.result.final_hard_metrics.test_loss - experiment.result.final_shadow_metrics.test_loss
+
+
+def _experiment_accuracy_gap_summary(experiment: SeedExperiment) -> str:
+    return (
+        f"seed {experiment.seed}: shadow {experiment.result.final_shadow_metrics.test_accuracy:.3f} "
+        f"vs hard {experiment.result.final_hard_metrics.test_accuracy:.3f} "
+        f"(gap {_shadow_hard_accuracy_gap(experiment):+.3f})"
+    )
+
+
+def _experiment_loss_gap_summary(experiment: SeedExperiment) -> str:
+    return (
+        f"seed {experiment.seed}: shadow {experiment.result.final_shadow_metrics.test_loss:.4f} "
+        f"vs hard {experiment.result.final_hard_metrics.test_loss:.4f} "
+        f"(gap {_shadow_hard_loss_gap(experiment):+.4f})"
+    )
+
+
+def _experiment_divergence_summary(experiment: SeedExperiment) -> str:
+    return (
+        f"acc gap {_shadow_hard_accuracy_gap(experiment):+.3f} "
+        f"(shadow {experiment.result.final_shadow_metrics.test_accuracy:.3f}, "
+        f"hard {experiment.result.final_hard_metrics.test_accuracy:.3f}); "
+        f"loss gap {_shadow_hard_loss_gap(experiment):+.4f} "
+        f"(shadow {experiment.result.final_shadow_metrics.test_loss:.4f}, "
+        f"hard {experiment.result.final_hard_metrics.test_loss:.4f})"
+    )
 
 
 def _experiment_peak_ban_summary(
