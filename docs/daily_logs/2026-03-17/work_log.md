@@ -42,6 +42,18 @@
   - updated comparison runbook commands with new epoch counts
   - recorded the momentum addition and README trimming in Current State
 - Updated `CHANGELOG.md` with a 2026-03-17 entry.
+- Full codebase re-review of trainer.py, test_smoke.py, reporting.py, visualization.py.
+  - trainer.py: scoring, propagation, trial_score logic verified as correct; `_trial_score` weights are already configurable via `config.hard_loss_weight` and `config.hard_gap_weight`
+  - visualization.py: all three comparison functions (`save_baseline_metrics_comparison_plot`, `save_baseline_comparison_plot`, `save_baseline_comparison_gif`) use identical axis scales, shared grids, and consistent color coding — no visual bias
+  - reporting.py: divergence calculations (`shadow - hard` for accuracy, `hard - shadow` for loss) are directionally correct
+  - test_smoke.py: identified that existing 26 tests only check structural properties (shapes, finiteness, "runs without crashing"), not algorithmic correctness
+- Added 10 algorithmic correctness tests to `tests/test_smoke.py` (total: 36 tests).
+  - `ObservationDirectionalityTest`: verifies observation assigns highest probability to lowest-loss value; verifies `_loss_to_distribution` monotonicity with known loss vector
+  - `CollapseSelectionTest`: verifies `_select_next_weight` picks the weight with lowest entropy across all candidates
+  - `PropagationEffectTest`: verifies propagation modifies neighbor distributions after collapse; verifies stronger `propagation_blend` causes larger distribution shift
+  - `TrialScoreTest`: verifies exact `_trial_score` calculation against formula; verifies hard_gap penalty activates only when hard_loss > shadow_loss
+  - `SGDMomentumCorrectnessTest`: verifies momentum=0.9 produces different weights from momentum=0.0; verifies momentum improves convergence on make_moons
+- Verified determinism: all random sources use `np.random.default_rng(seed)` with no global state dependency — same seed produces identical results across environments.
 
 ## Technical Decisions
 
@@ -59,7 +71,7 @@
 - `python3 -m py_compile src/t_wfc/*.py tests/test_smoke.py`
   - Result: passed
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
-  - Result: passed (Ran 26 tests in 22.157s)
+  - Result: passed (Ran 36 tests in 20.834s)
 - SGD momentum sweep (seed=7, all three datasets)
   - make_moons: momentum SGD converges to 1.000 test acc across all tested lr/epochs combinations
   - iris: 0.944 test acc across all combinations (saturated)

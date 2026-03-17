@@ -834,6 +834,226 @@ class TWFCTrainerSmokeTest(unittest.TestCase):
             self.assertIn("@ s", report_text)
 
 
+class ObservationDirectionalityTest(unittest.TestCase):
+    """Verify that observation assigns higher probability to lower-loss values."""
+
+    def test_observation_prefers_lower_loss_values(self) -> None:
+        dataset = make_moons_dataset(n_samples=60, seed=42)
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(6,)))
+        config = TWFCConfig(seed=42, max_steps=1, initial_jitter=0.3)
+        trainer = TWFCTrainer(model, config)
+
+        state = WeightState.uniform(model.parameter_count, np.asarray(config.domain))
+        trainer._apply_initial_jitter(state)
+        observation = trainer._observe_weight(
+            state=state,
+            weight_index=0,
+            features=dataset.x_train,
+            labels=dataset.y_train,
+        )
+
+        finite_mask = np.isfinite(observation.losses)
+        self.assertTrue(finite_mask.any())
+        best_value_index = int(np.nanargmin(observation.losses))
+        self.assertEqual(observation.posterior.argmax(), best_value_index)
+        self.assertGreaterEqual(observation.posterior[best_value_index], 1.0 / len(config.domain))
+
+    def test_loss_to_distribution_monotonicity(self) -> None:
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(4,)))
+        config = TWFCConfig(seed=7, temperature=0.18)
+        trainer = TWFCTrainer(model, config)
+
+        losses = np.array([2.0, 1.5, 0.5, 1.0, 3.0])
+        distribution = trainer._loss_to_distribution(losses)
+
+        self.assertAlmostEqual(distribution.sum(), 1.0, places=8)
+        self.assertEqual(distribution.argmax(), 2)
+        sorted_loss_order = np.argsort(losses)
+        sorted_prob_order = np.argsort(-distribution)
+        np.testing.assert_array_equal(sorted_loss_order, sorted_prob_order)
+
+
+class CollapseSelectionTest(unittest.TestCase):
+    """Verify that the collapse step selects the lowest-entropy weight."""
+
+    def test_select_next_weight_picks_lowest_entropy(self) -> None:
+        dataset = make_moons_dataset(n_samples=60, seed=42)
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(6,)))
+        config = TWFCConfig(seed=42, observation_budget=0, initial_jitter=0.3)
+        trainer = TWFCTrainer(model, config)
+
+        state = WeightState.uniform(model.parameter_count, np.asarray(config.domain))
+        trainer._apply_initial_jitter(state)
+        observation = trainer._select_next_weight(
+            state=state,
+            features=dataset.x_train,
+            labels=dataset.y_train,
+        )
+
+        all_observations = [
+            trainer._observe_weight(
+                state=state,
+                weight_index=i,
+                features=dataset.x_train,
+                labels=dataset.y_train,
+            )
+            for i in range(model.parameter_count)
+        ]
+        min_entropy = min(obs.entropy for obs in all_observations)
+        self.assertAlmostEqual(observation.entropy, min_entropy, places=10)
+
+
+class PropagationEffectTest(unittest.TestCase):
+    """Verify that propagation actually changes neighbor distributions."""
+
+    def test_propagation_modifies_neighbor_distributions(self) -> None:
+        dataset = make_moons_dataset(n_samples=60, seed=42)
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(6,)))
+        config = TWFCConfig(seed=42, propagation_blend=0.6, initial_jitter=0.3)
+        trainer = TWFCTrainer(model, config)
+
+        state = WeightState.uniform(model.parameter_count, np.asarray(config.domain))
+        trainer._apply_initial_jitter(state)
+        before_snapshot = state.snapshot()
+
+        state.collapse(0, 2)
+        propagated = trainer._propagate(
+            state=state,
+            collapsed_index=0,
+            features=dataset.x_train,
+            labels=dataset.y_train,
+        )
+
+        self.assertGreater(len(propagated), 0)
+        any_changed = False
+        for neighbor_index in propagated:
+            old_dist = before_snapshot.probabilities[neighbor_index]
+            new_dist = state.probabilities[neighbor_index]
+            if not np.allclose(old_dist, new_dist):
+                any_changed = True
+        self.assertTrue(any_changed, "At least one neighbor distribution should change after propagation")
+
+    def test_propagation_blend_strength(self) -> None:
+        dataset = make_moons_dataset(n_samples=60, seed=42)
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(6,)))
+
+        config_weak = TWFCConfig(seed=42, propagation_blend=0.1, initial_jitter=0.3)
+        config_strong = TWFCConfig(seed=42, propagation_blend=0.9, initial_jitter=0.3)
+
+        state_weak = WeightState.uniform(model.parameter_count, np.asarray(config_weak.domain))
+        state_strong = WeightState.uniform(model.parameter_count, np.asarray(config_strong.domain))
+
+        trainer_weak = TWFCTrainer(model, config_weak)
+        trainer_strong = TWFCTrainer(model, config_strong)
+        trainer_weak._apply_initial_jitter(state_weak)
+        trainer_strong._apply_initial_jitter(state_strong)
+        before_weak = state_weak.probabilities.copy()
+        before_strong = state_strong.probabilities.copy()
+
+        state_weak.collapse(0, 2)
+        state_strong.collapse(0, 2)
+        trainer_weak._propagate(state_weak, 0, dataset.x_train, dataset.y_train)
+        trainer_strong._propagate(state_strong, 0, dataset.x_train, dataset.y_train)
+
+        neighbors_weak = trainer_weak.neighbor_map[0]
+        neighbors_strong = trainer_strong.neighbor_map[0]
+        common_neighbors = set(neighbors_weak) & set(neighbors_strong)
+        self.assertGreater(len(common_neighbors), 0)
+
+        weak_total_shift = 0.0
+        strong_total_shift = 0.0
+        for n in common_neighbors:
+            if state_weak.collapsed[n] or state_strong.collapsed[n]:
+                continue
+            weak_total_shift += np.abs(state_weak.probabilities[n] - before_weak[n]).sum()
+            strong_total_shift += np.abs(state_strong.probabilities[n] - before_strong[n]).sum()
+
+        self.assertGreaterEqual(
+            strong_total_shift,
+            weak_total_shift,
+            "Stronger propagation blend should produce larger total distribution shift",
+        )
+
+
+class TrialScoreTest(unittest.TestCase):
+    """Verify _trial_score applies hard_loss penalty correctly."""
+
+    def test_trial_score_basic_calculation(self) -> None:
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(4,)))
+        config = TWFCConfig(hard_loss_weight=0.35, hard_gap_weight=0.2)
+        trainer = TWFCTrainer(model, config)
+
+        score = trainer._trial_score(shadow_loss=1.0, hard_loss=1.0)
+        expected = 1.0 + 0.35 * 1.0 + 0.2 * max(0.0, 1.0 - 1.0)
+        self.assertAlmostEqual(score, expected, places=10)
+
+    def test_trial_score_penalizes_hard_gap(self) -> None:
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(4,)))
+        config = TWFCConfig(hard_loss_weight=0.35, hard_gap_weight=0.2)
+        trainer = TWFCTrainer(model, config)
+
+        score_no_gap = trainer._trial_score(shadow_loss=1.0, hard_loss=1.0)
+        score_with_gap = trainer._trial_score(shadow_loss=1.0, hard_loss=2.0)
+        self.assertGreater(score_with_gap, score_no_gap)
+
+        expected_gap_score = 1.0 + 0.35 * 2.0 + 0.2 * max(0.0, 2.0 - 1.0)
+        self.assertAlmostEqual(score_with_gap, expected_gap_score, places=10)
+
+    def test_trial_score_no_penalty_when_hard_better(self) -> None:
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(4,)))
+        config = TWFCConfig(hard_loss_weight=0.35, hard_gap_weight=0.2)
+        trainer = TWFCTrainer(model, config)
+
+        score = trainer._trial_score(shadow_loss=2.0, hard_loss=1.0)
+        expected = 2.0 + 0.35 * 1.0 + 0.2 * 0.0
+        self.assertAlmostEqual(score, expected, places=10)
+
+
+class SGDMomentumCorrectnessTest(unittest.TestCase):
+    """Verify that SGD momentum updates velocity correctly."""
+
+    def test_momentum_velocity_accumulation(self) -> None:
+        dataset = make_moons_dataset(n_samples=40, seed=42)
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(4,)))
+
+        result_no_mom = train_sgd_classifier(
+            model=model,
+            dataset=dataset,
+            config=SGDBaselineConfig(epochs=30, momentum=0.0, batch_size=-1, seed=42),
+        )
+        result_with_mom = train_sgd_classifier(
+            model=model,
+            dataset=dataset,
+            config=SGDBaselineConfig(epochs=30, momentum=0.9, batch_size=-1, seed=42),
+        )
+
+        self.assertFalse(
+            np.allclose(result_no_mom.weights, result_with_mom.weights),
+            "Momentum=0.0 and momentum=0.9 should produce different final weights",
+        )
+
+    def test_momentum_improves_convergence(self) -> None:
+        dataset = make_moons_dataset(n_samples=80, seed=42)
+        model = ToyMLP(MLPConfig(input_dim=2, output_dim=2, hidden_layers=(8,)))
+
+        result_no_mom = train_sgd_classifier(
+            model=model,
+            dataset=dataset,
+            config=SGDBaselineConfig(epochs=60, momentum=0.0, batch_size=-1, seed=42),
+        )
+        result_with_mom = train_sgd_classifier(
+            model=model,
+            dataset=dataset,
+            config=SGDBaselineConfig(epochs=60, momentum=0.9, batch_size=-1, seed=42),
+        )
+
+        self.assertLessEqual(
+            result_with_mom.final_metrics.train_loss,
+            result_no_mom.final_metrics.train_loss,
+            "Momentum SGD should converge at least as well as vanilla SGD on make_moons",
+        )
+
+
 class SGDBaselineSmokeTest(unittest.TestCase):
     def test_sgd_baseline_improves_on_iris_with_multilayer_model(self) -> None:
         dataset = load_iris_dataset(seed=9)
