@@ -54,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--sgd-epochs", type=int, default=240, help="Epoch count for the SGD baseline.")
     parser.add_argument("--sgd-learning-rate", type=float, default=0.08, help="Initial learning rate for the SGD baseline.")
     parser.add_argument("--sgd-learning-rate-decay", type=float, default=0.01, help="Per-epoch learning-rate decay for the SGD baseline.")
+    parser.add_argument("--sgd-momentum", type=float, default=0.9, help="Momentum coefficient for the SGD baseline. Use 0 for vanilla SGD.")
     parser.add_argument("--sgd-batch-size", type=int, default=32, help="Mini-batch size for the SGD baseline. Use -1 for full-batch training.")
     parser.add_argument("--sgd-weight-scale", type=float, default=1.0, help="Initialization scale for the SGD baseline.")
     parser.add_argument("--show-steps", type=int, default=8, help="How many collapse steps to print in the summary.")
@@ -165,6 +166,7 @@ def main() -> None:
                 epochs=args.sgd_epochs,
                 learning_rate=args.sgd_learning_rate,
                 learning_rate_decay=args.sgd_learning_rate_decay,
+                momentum=args.sgd_momentum,
                 batch_size=args.sgd_batch_size,
                 weight_scale=args.sgd_weight_scale,
                 seed=args.seed,

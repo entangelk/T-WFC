@@ -14,6 +14,7 @@ class SGDBaselineConfig:
     epochs: int = 240
     learning_rate: float = 0.08
     learning_rate_decay: float = 0.01
+    momentum: float = 0.9
     batch_size: int = 32
     weight_scale: float = 1.0
     seed: int = 7
@@ -38,11 +39,14 @@ def train_sgd_classifier(
         raise ValueError("learning_rate must be positive")
     if config.learning_rate_decay < 0.0:
         raise ValueError("learning_rate_decay must be non-negative")
+    if not 0.0 <= config.momentum < 1.0:
+        raise ValueError("momentum must be in [0.0, 1.0)")
     if config.batch_size == 0:
         raise ValueError("batch_size must be positive or -1 for full-batch mode")
 
     rng = np.random.default_rng(config.seed)
     weights = model.random_vector(rng, scale=config.weight_scale)
+    velocity = np.zeros_like(weights)
     history: list[EvaluationMetrics] = [_evaluate(model, weights, dataset)]
 
     train_size = dataset.x_train.shape[0]
@@ -59,7 +63,8 @@ def train_sgd_classifier(
                 dataset.x_train[batch_indices],
                 dataset.y_train[batch_indices],
             )
-            weights = weights - learning_rate * gradient
+            velocity = config.momentum * velocity - learning_rate * gradient
+            weights = weights + velocity
 
         history.append(_evaluate(model, weights, dataset))
 

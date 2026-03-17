@@ -2,6 +2,7 @@
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-03-17 | Added momentum to SGD baseline, re-tuned comparisons for fairness, trimmed README | [work_log.md](./docs/daily_logs/2026-03-17/work_log.md) |
 | 2026-03-16 | Re-verified README comparison claims and refreshed the checked-in public comparison media | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
 | 2026-03-16 | Refreshed the public README files and sample seed report for inline highlight previews | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
 | 2026-03-16 | Embedded inline best/worst preview images inside seed Markdown reports | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |
