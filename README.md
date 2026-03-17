@@ -97,46 +97,84 @@ Before the frontier-based forced-commit fallback existed, this stress setting co
 
 Where the GIFs show a single run, the gallery shows how much behavior varies across seeds. The generated Markdown report includes inline storyboard and metrics previews for the best and worst seeds. Full example: [docs/media/make_moons_seed_report.md](./docs/media/make_moons_seed_report.md).
 
-## T-WFC vs SGD+Momentum
+## Final Results: T-WFC vs SGD+Momentum
 
-T-WFC collapses each weight into one of five discrete values (`{-1, -0.5, 0, 0.5, 1}`), while SGD optimizes over continuous real-valued weights. The baseline uses SGD with momentum (0.9) and learning-rate decay — a standard optimizer, not a deliberately weakened one.
+T-WFC collapses each weight into one of five discrete values (`{-1, -0.5, 0, 0.5, 1}`), while SGD optimizes over continuous real-valued weights. The baseline uses SGD with momentum (0.9) and learning-rate decay — a standard optimizer, not a deliberately weakened one. All results: `seed=7`, deterministic NumPy CPU ops.
 
-<p align="center">
-  <img src="./docs/media/make_moons_twfc_vs_sgd.gif" alt="T-WFC vs SGD on make_moons" width="950">
-</p>
-<p align="center"><sub>T-WFC collapse progression alongside the SGD+momentum baseline on <code>make_moons</code>.</sub></p>
+### Accuracy and Speed
+
+| Dataset | Nonlinearity | T-WFC | SGD+Mom | T-WFC time | SGD time | Params |
+|---------|-------------|-------|---------|------------|----------|--------|
+| linear_binary | None | **0.967** | **0.967** | 0.10s | 0.10s | 32 |
+| blobs_binary | None | **1.000** | **1.000** | 0.10s | 0.11s | 32 |
+| make_blobs | None | **1.000** | **1.000** | 0.20s | 0.10s | 51 |
+| iris | Weak | **0.972** | 0.944 | 0.27s | 0.13s | 67 |
+| make_moons | Moderate | 0.933 | **1.000** | 0.11s | 0.11s | 32 |
+| xor | Moderate | 0.660 | **1.000** | 0.12s | 0.15s | 32 |
+| circles | Moderate | 0.620 | **1.000** | 0.12s | 0.15s | 32 |
+| spiral | Strong | 0.433 | **0.987** | 21.55s | 0.82s | 747 |
+
+### Where T-WFC works: linearly separable data
+
+<table>
+  <tr>
+    <td width="33%">
+      <img src="./docs/media/linear_binary_twfc_vs_sgd.gif" alt="T-WFC vs SGD on linear_binary" width="100%">
+    </td>
+    <td width="33%">
+      <img src="./docs/media/blobs_binary_twfc_vs_sgd.gif" alt="T-WFC vs SGD on blobs_binary" width="100%">
+    </td>
+    <td width="33%">
+      <img src="./docs/media/make_blobs_twfc_vs_sgd.gif" alt="T-WFC vs SGD on make_blobs" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top"><strong>linear_binary</strong>: 0.967 = 0.967</td>
+    <td valign="top"><strong>blobs_binary</strong>: 1.000 = 1.000</td>
+    <td valign="top"><strong>make_blobs</strong>: 1.000 = 1.000</td>
+  </tr>
+</table>
+
+On linearly separable problems, T-WFC matches SGD perfectly — discrete 5-value weights can express simple hyperplane boundaries. No backtracking or rollback needed.
+
+### Where T-WFC fails: nonlinear data
 
 <table>
   <tr>
     <td width="50%">
-      <img src="./docs/media/make_moons_twfc_vs_sgd_boundaries.png" alt="T-WFC vs SGD boundary board on make_moons" width="100%">
+      <img src="./docs/media/make_moons_twfc_vs_sgd.gif" alt="T-WFC vs SGD on make_moons" width="100%">
+    </td>
+    <td width="50%">
+      <img src="./docs/media/xor_twfc_vs_sgd.gif" alt="T-WFC vs SGD on xor" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top"><strong>make_moons</strong>: 0.933 vs 1.000 — gap begins</td>
+    <td valign="top"><strong>xor</strong>: 0.660 vs 1.000 — effective failure</td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="./docs/media/circles_twfc_vs_sgd.gif" alt="T-WFC vs SGD on circles" width="100%">
     </td>
     <td width="50%">
       <img src="./docs/media/spiral_twfc_vs_sgd.gif" alt="T-WFC vs SGD on spiral" width="100%">
     </td>
   </tr>
   <tr>
-    <td valign="top">
-      <strong>Closest case: make_moons</strong><br>
-      T-WFC hard weights (5 discrete values) reach <code>0.925</code> test accuracy while SGD+momentum (continuous weights) reaches <code>1.000</code>.
-    </td>
-    <td valign="top">
-      <strong>Honest scaling case: spiral</strong><br>
-      The gap is large. T-WFC hard test accuracy reaches <code>0.367</code> while SGD+momentum reaches <code>0.911</code>. The discrete constraint and single-weight collapse strategy do not yet scale to this complexity.
-    </td>
+    <td valign="top"><strong>circles</strong>: 0.620 vs 1.000 — effective failure</td>
+    <td valign="top"><strong>spiral</strong>: 0.433 vs 0.987 — 26× slower, fundamentally insufficient</td>
   </tr>
 </table>
 
-<p align="center">
-  <img src="./docs/media/iris_twfc_vs_sgd_metrics.png" alt="T-WFC vs SGD metrics on iris" width="920">
-</p>
-<p align="center"><sub><code>iris</code>: T-WFC shadow test accuracy <code>0.750</code>, hard test accuracy <code>0.556</code>, SGD+momentum <code>0.944</code>.</sub></p>
+Once the required decision boundary is nonlinear, the combinatorial space of 5 discrete values cannot represent it. The gap grows with problem complexity; at `spiral` scale (747 params), T-WFC is also 26× slower and uses 117× more memory.
 
-`make_moons` is where T-WFC looks most promising. `spiral` and `iris` show the honest gap against a properly tuned continuous-weight optimizer.
+### Conclusion
+
+The PoC succeeded: WFC-style collapse genuinely trains a toy MLP without backpropagation, matching SGD on linearly separable tasks. But T-WFC does not generalize to nonlinear problems, does not scale efficiently, and offers no speed or memory advantage over SGD. Full analysis in [docs/RESULT.en.md](./docs/RESULT.en.md).
 
 ## Current Status
 
-- Datasets: `make_moons`, `spiral`, and vendored `iris.csv`.
+- Datasets: `linear_binary`, `blobs_binary`, `make_blobs`, `iris`, `make_moons`, `xor`, `circles`, `spiral`.
 - Models: single-hidden-layer toy MLP and deeper configurations (e.g. `2-24-24-3`).
 - Training loop: observation, single-weight collapse, propagation, rollback-aware backtracking, and forced-commit fallback.
 - Visualization: storyboard, GIF, metrics timeline, multi-seed gallery and report, `T-WFC vs SGD` comparison boards.

@@ -2,6 +2,7 @@
 
 | Date | Change | Details |
 |------|--------|---------|
+| 2026-03-18 | Final results: 8 datasets (3 linear + 5 nonlinear), speed benchmark, comparison GIFs, RESULT.md, README rewrite | [work_log.md](./docs/daily_logs/2026-03-18/work_log.md) |
 | 2026-03-17 | Added algorithmic correctness tests for observation, collapse, propagation, trial_score, and SGD momentum | [work_log.md](./docs/daily_logs/2026-03-17/work_log.md) |
 | 2026-03-17 | Added momentum to SGD baseline, re-tuned comparisons for fairness, trimmed README | [work_log.md](./docs/daily_logs/2026-03-17/work_log.md) |
 | 2026-03-16 | Re-verified README comparison claims and refreshed the checked-in public comparison media | [work_log.md](./docs/daily_logs/2026-03-16/work_log.md) |

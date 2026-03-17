@@ -25,7 +25,7 @@ from .visualization import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the T-WFC toy prototype.")
-    parser.add_argument("--dataset", choices=("make_moons", "iris", "spiral"), default="make_moons", help="Dataset to run the prototype on.")
+    parser.add_argument("--dataset", choices=("make_moons", "iris", "spiral", "make_blobs", "xor", "circles", "linear_binary", "blobs_binary"), default="make_moons", help="Dataset to run the prototype on.")
     parser.add_argument("--samples", type=int, default=0, help="Dataset sample count. Use 0 to select a dataset-specific default.")
     parser.add_argument("--noise", type=float, default=-1.0, help="Dataset noise level. Use a negative value to select a dataset-specific default.")
     parser.add_argument("--hidden-dim", type=int, default=0, help="Legacy single hidden-layer width. Use 0 to select a dataset-specific default.")

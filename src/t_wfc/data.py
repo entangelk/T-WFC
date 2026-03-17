@@ -33,6 +33,43 @@ def load_dataset(name: str, **kwargs: float | int | str | Path) -> DatasetSplit:
             seed=int(kwargs.get("seed", 7)),
             csv_path=None if csv_path is None else Path(str(csv_path)),
         )
+    if name == "linear_binary":
+        return make_linear_binary_dataset(
+            n_samples=int(kwargs.get("n_samples", 120)),
+            noise=float(kwargs.get("noise", 0.3)),
+            test_ratio=float(kwargs.get("test_ratio", 0.25)),
+            seed=int(kwargs.get("seed", 7)),
+        )
+    if name == "blobs_binary":
+        return make_blobs_dataset(
+            n_samples=int(kwargs.get("n_samples", 120)),
+            n_classes=2,
+            cluster_std=float(kwargs.get("cluster_std", 0.6)),
+            test_ratio=float(kwargs.get("test_ratio", 0.25)),
+            seed=int(kwargs.get("seed", 7)),
+        )
+    if name == "xor":
+        return make_xor_dataset(
+            n_samples=int(kwargs.get("n_samples", 200)),
+            noise=float(kwargs.get("noise", 0.15)),
+            test_ratio=float(kwargs.get("test_ratio", 0.25)),
+            seed=int(kwargs.get("seed", 7)),
+        )
+    if name == "circles":
+        return make_circles_dataset(
+            n_samples=int(kwargs.get("n_samples", 200)),
+            noise=float(kwargs.get("noise", 0.08)),
+            test_ratio=float(kwargs.get("test_ratio", 0.25)),
+            seed=int(kwargs.get("seed", 7)),
+        )
+    if name == "make_blobs":
+        return make_blobs_dataset(
+            n_samples=int(kwargs.get("n_samples", 120)),
+            n_classes=int(kwargs.get("classes", 3)),
+            cluster_std=float(kwargs.get("cluster_std", 0.6)),
+            test_ratio=float(kwargs.get("test_ratio", 0.25)),
+            seed=int(kwargs.get("seed", 7)),
+        )
     if name == "spiral":
         return make_spiral_dataset(
             n_samples=int(kwargs.get("n_samples", 600)),
@@ -43,6 +80,34 @@ def load_dataset(name: str, **kwargs: float | int | str | Path) -> DatasetSplit:
             turns=float(kwargs.get("turns", 1.75)),
         )
     raise ValueError(f"Unsupported dataset: {name}")
+
+
+def make_linear_binary_dataset(
+    n_samples: int = 120,
+    noise: float = 0.3,
+    test_ratio: float = 0.25,
+    seed: int = 7,
+) -> DatasetSplit:
+    """Two classes separated by a diagonal line (x0 + x1 = 0)."""
+    if n_samples < 8:
+        raise ValueError("n_samples must be at least 8")
+    if not 0.0 < test_ratio < 0.5:
+        raise ValueError("test_ratio must be between 0.0 and 0.5")
+
+    rng = np.random.default_rng(seed)
+    features = rng.uniform(-2.0, 2.0, size=(n_samples, 2))
+    features += rng.normal(0.0, noise, size=features.shape)
+    labels = (features[:, 0] + features[:, 1] > 0).astype(np.int64)
+
+    perm = rng.permutation(n_samples)
+    features, labels = features[perm], labels[perm]
+
+    test_count = max(1, int(round(n_samples * test_ratio)))
+    test_count = min(test_count, n_samples - 1)
+    train_x, test_x = features[:-test_count], features[-test_count:]
+    train_y, test_y = labels[:-test_count], labels[-test_count:]
+
+    return _standardize_split(train_x, train_y, test_x, test_y, name="linear_binary", seed=seed)
 
 
 def make_moons_dataset(
@@ -125,6 +190,129 @@ def load_iris_dataset(
     test_y = labels[test_indices]
 
     return _standardize_split(train_x, train_y, test_x, test_y, name="iris", seed=seed)
+
+
+def make_xor_dataset(
+    n_samples: int = 200,
+    noise: float = 0.15,
+    test_ratio: float = 0.25,
+    seed: int = 7,
+) -> DatasetSplit:
+    if n_samples < 8:
+        raise ValueError("n_samples must be at least 8")
+    if not 0.0 < test_ratio < 0.5:
+        raise ValueError("test_ratio must be between 0.0 and 0.5")
+
+    rng = np.random.default_rng(seed)
+    quarter = n_samples // 4
+    counts = [quarter, quarter, quarter, n_samples - 3 * quarter]
+
+    # Four quadrant centers for XOR pattern
+    centers = np.array([[1.0, 1.0], [-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0]])
+    xor_labels = np.array([0, 0, 1, 1], dtype=np.int64)
+
+    feature_blocks: list[np.ndarray] = []
+    label_blocks: list[np.ndarray] = []
+    for i, count in enumerate(counts):
+        points = rng.normal(loc=centers[i], scale=noise * 2.0, size=(count, 2))
+        feature_blocks.append(points)
+        label_blocks.append(np.full(count, xor_labels[i], dtype=np.int64))
+
+    features = np.vstack(feature_blocks)
+    labels = np.concatenate(label_blocks)
+
+    perm = rng.permutation(len(labels))
+    features, labels = features[perm], labels[perm]
+
+    test_count = max(1, int(round(n_samples * test_ratio)))
+    test_count = min(test_count, n_samples - 1)
+    train_x, test_x = features[:-test_count], features[-test_count:]
+    train_y, test_y = labels[:-test_count], labels[-test_count:]
+
+    return _standardize_split(train_x, train_y, test_x, test_y, name="xor", seed=seed)
+
+
+def make_circles_dataset(
+    n_samples: int = 200,
+    noise: float = 0.08,
+    test_ratio: float = 0.25,
+    seed: int = 7,
+) -> DatasetSplit:
+    if n_samples < 8:
+        raise ValueError("n_samples must be at least 8")
+    if not 0.0 < test_ratio < 0.5:
+        raise ValueError("test_ratio must be between 0.0 and 0.5")
+
+    rng = np.random.default_rng(seed)
+    inner_count = n_samples // 2
+    outer_count = n_samples - inner_count
+
+    # Inner circle (label 0), radius ~0.5
+    inner_theta = rng.uniform(0.0, 2.0 * np.pi, size=inner_count)
+    inner_r = 0.5 + rng.normal(0.0, noise, size=inner_count)
+    inner_pts = np.column_stack((inner_r * np.cos(inner_theta), inner_r * np.sin(inner_theta)))
+
+    # Outer circle (label 1), radius ~1.5
+    outer_theta = rng.uniform(0.0, 2.0 * np.pi, size=outer_count)
+    outer_r = 1.5 + rng.normal(0.0, noise, size=outer_count)
+    outer_pts = np.column_stack((outer_r * np.cos(outer_theta), outer_r * np.sin(outer_theta)))
+
+    features = np.vstack((inner_pts, outer_pts))
+    labels = np.concatenate((
+        np.zeros(inner_count, dtype=np.int64),
+        np.ones(outer_count, dtype=np.int64),
+    ))
+
+    perm = rng.permutation(n_samples)
+    features, labels = features[perm], labels[perm]
+
+    test_count = max(1, int(round(n_samples * test_ratio)))
+    test_count = min(test_count, n_samples - 1)
+    train_x, test_x = features[:-test_count], features[-test_count:]
+    train_y, test_y = labels[:-test_count], labels[-test_count:]
+
+    return _standardize_split(train_x, train_y, test_x, test_y, name="circles", seed=seed)
+
+
+def make_blobs_dataset(
+    n_samples: int = 120,
+    n_classes: int = 3,
+    cluster_std: float = 0.6,
+    test_ratio: float = 0.25,
+    seed: int = 7,
+) -> DatasetSplit:
+    if n_samples < n_classes * 4:
+        raise ValueError("n_samples must be at least n_classes * 4")
+    if n_classes < 2:
+        raise ValueError("n_classes must be at least 2")
+    if not 0.0 < test_ratio < 0.5:
+        raise ValueError("test_ratio must be between 0.0 and 0.5")
+
+    rng = np.random.default_rng(seed)
+    class_counts = np.full(n_classes, n_samples // n_classes, dtype=np.int64)
+    class_counts[: n_samples % n_classes] += 1
+
+    # Place cluster centers evenly on a circle with radius 3.0
+    angles = np.linspace(0.0, 2.0 * np.pi, n_classes, endpoint=False)
+    centers = 3.0 * np.column_stack((np.cos(angles), np.sin(angles)))
+
+    feature_blocks: list[np.ndarray] = []
+    label_blocks: list[np.ndarray] = []
+    for class_index, count in enumerate(class_counts.tolist()):
+        points = rng.normal(loc=centers[class_index], scale=cluster_std, size=(count, 2))
+        feature_blocks.append(points)
+        label_blocks.append(np.full(count, class_index, dtype=np.int64))
+
+    features = np.vstack(feature_blocks)
+    labels = np.concatenate(label_blocks)
+
+    train_indices, test_indices = _stratified_split_indices(labels, test_ratio, rng)
+    train_x = features[train_indices]
+    train_y = labels[train_indices]
+    test_x = features[test_indices]
+    test_y = labels[test_indices]
+
+    return _standardize_split(train_x, train_y, test_x, test_y, name="make_blobs", seed=seed)
 
 
 def make_spiral_dataset(
