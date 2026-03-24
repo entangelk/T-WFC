@@ -80,6 +80,10 @@ WFC was designed for **spatially local discrete constraint satisfaction problems
 
 T-WFC succeeds on linearly separable problems because the decision boundary is a simple hyperplane — expressible with 5-value combinations. Once nonlinearity is required, this breaks down.
 
+### Retrospective on algorithmic identity
+
+In practice, T-WFC behaves more like greedy coordinate descent over a discrete domain than like WFC proper. Without WFC's core mechanism — hard adjacency constraints between tiles — loss-based propagation alone cannot achieve the global consistency that WFC was designed to enforce. The current implementation is more accurately described as a gradient-free discrete search combining entropy-based observation with neighbor propagation heuristics.
+
 ### Unexplored directions
 
 - **Larger domain**: 21 values at 0.1 spacing → more expressiveness, but search time explodes
